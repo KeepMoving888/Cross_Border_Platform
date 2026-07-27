@@ -1,0 +1,182 @@
+version: "3.9"
+
+# 跨境电商智能运营中台 - 完整开发与部署环境
+# 包含:应用 + MySQL + Redis + PostgreSQL(pgvector) + Prometheus + Grafana
+
+networks:
+  cb-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  pg-data:
+  prometheus-data:
+  grafana-data:
+  app-logs:
+
+services:
+  # ============== 应用服务 ==============
+  cb-platform:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: cb-platform-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - APP_PORT=8080
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=cb
+      - PG_PASSWORD=cb_pass_2026
+      - PG_DB=cb_vector
+      - PG_SSLMODE=disable
+      - JWT_SECRET=cb_platform_jwt_secret_change_in_production
+      - JWT_EXPIRE_HOURS=24
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      # LLM 配置(按需修改)
+      - LLM_PROVIDER=glm
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+      - LLM_MODEL=glm-4-plus
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app-logs:/app/logs
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============== MySQL(业务数据) ==============
+  mysql:
+    image: mysql:8.0
+    container_name: cb-platform-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_pass_2026
+      - MYSQL_DATABASE=cb_platform
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - TZ=Asia/Shanghai
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --max-connections=200
+      --innodb-buffer-pool-size=512M
+      --slow-query-log=1
+      --long-query-time=2
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "cb", "-pcb_pass_2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============== Redis(缓存与队列) ==============
+  redis:
+    image: redis:7-alpine
+    container_name: cb-platform-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============== PostgreSQL + pgvector(向量库) ==============
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cb-platform-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=cb_vector
+      - POSTGRES_USER=cb
+      - POSTGRES_PASSWORD=cb_pass_2026
+      - TZ=Asia/Shanghai
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cb -d cb_vector"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============== Prometheus(指标采集) ==============
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cb-platform-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - cb-net
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+
+  # ============== Grafana(可视化监控) ==============
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cb-platform-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - cb-net
+    depends_on:
+      - prometheus

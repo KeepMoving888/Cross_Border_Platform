@@ -1,0 +1,41 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'cb-platform-monitor'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+
+rule_files:
+
+scrape_configs:
+  # Prometheus 自身
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 应用服务
+  - job_name: 'cb-platform'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['cb-platform:8080']
+        labels:
+          service: 'cb-platform'
+          env: 'production'
+
+  # MySQL(需要 mysqld_exporter)
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['mysql:9104']
+        labels:
+          service: 'mysql'
+
+  # Redis(需要 redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+        labels:
+          service: 'redis'

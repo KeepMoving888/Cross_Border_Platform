@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'CB Platform Dashboards'
+    orgId: 1
+    folder: 'CB Platform'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

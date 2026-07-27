@@ -1,0 +1,79 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - revive
+    - gosec
+    - bodyclose
+    - rowserrcheck
+    - sqlclosecheck
+    - prealloc
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/cb-platform
+  revive:
+    severity: warning
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+  gosec:
+    excludes:
+      - G104  # 未检查错误(已在 errcheck 中处理)
+      - G304  # 文件路径包含变量(业务需要)
+    severity: medium
+    confidence: medium
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - govet
+    - path: internal/pkg/database
+      linters:
+        - gosec
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  fix: false
+
+output:
+  formats:
+    - format: colored-line-number
+  sort-results: true

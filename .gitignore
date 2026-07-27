@@ -1,0 +1,86 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test
+*.test
+*.out
+coverage.txt
+coverage.html
+coverage-*.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+
+# Local env
+.env
+.env.local
+.env.*.local
+*.local
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+tmp/
+
+# Vendor (keep for now)
+# vendor/
+
+# Docker volumes (本地持久化数据)
+deployments/.data/
+
+# 本地 Docker Compose 覆盖文件(镜像加速等本地配置,不入库)
+deployments/docker-compose.override.yml
+deployments/docker-compose.override.yaml
+
+# Secrets / 凭证(防止误提交)
+*.pem
+*.key
+*.crt
+secrets/
+credentials.json
+service-account.json
+
+# 编辑器临时文件
+*~
+.fleet/
+
+# 临时脚本(本地部署/验证用,不入库)
+*.ps1
+check-*.ps1
+deploy-*.ps1
+verify-*.ps1
+make-*.ps1
+stats.ps1
+check-api.ps1
+check-ai.ps1
+check-log*.ps1
+check-ports.ps1
+check-runs*.ps1
+check-all-wf.ps1
+
+# 二进制文件
+deployments/cb-platform
+deployments/cb-platform-server
+
+# 本地登录页(含 token,不入库)
+web/public/auto-login.html
+

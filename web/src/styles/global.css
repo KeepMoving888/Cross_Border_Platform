@@ -1,0 +1,694 @@
+/* 全局样式 · 企业级 SaaS 简约商务风 */
+:root {
+  --cbp-primary: #1677ff;
+  --cbp-primary-soft: #e6f4ff;
+  --cbp-success: #52c41a;
+  --cbp-warning: #faad14;
+  --cbp-danger: #ff4d4f;
+  --cbp-text: rgba(0, 0, 0, 0.88);
+  --cbp-text-secondary: rgba(0, 0, 0, 0.45);
+  --cbp-border: #eef0f4;
+  --cbp-border-strong: #e5e7eb;
+  --cbp-bg: #f5f7fa;
+  --cbp-card-bg: #ffffff;
+  --cbp-radius: 12px;
+  --cbp-radius-sm: 8px;
+  --cbp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.04);
+  --cbp-shadow-hover: 0 8px 28px rgba(22, 119, 255, 0.1);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--cbp-text);
+  background: var(--cbp-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 119, 255, 0.35);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 登录页 */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0e3a8a 0%, #1677ff 50%, #4096ff 100%);
+  position: relative;
+  overflow: hidden;
+}
+.login-page::before {
+  content: '';
+  position: absolute;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  top: -180px;
+  right: -120px;
+}
+.login-page::after {
+  content: '';
+  position: absolute;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  bottom: -120px;
+  left: -80px;
+}
+
+/* ProLayout */
+.ant-pro-sider-logo {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+  background: #ffffff !important;
+}
+.ant-pro-sider-logo h1 {
+  color: #1677ff !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px;
+}
+.ant-pro-layout .ant-layout-sider {
+  border-right: 1px solid var(--cbp-border) !important;
+  box-shadow: none !important;
+}
+.ant-pro-layout .ant-pro-sider-menu {
+  padding: 8px 10px !important;
+}
+.ant-menu-light .ant-menu-item-selected {
+  background: var(--cbp-primary-soft) !important;
+  color: var(--cbp-primary) !important;
+  font-weight: 600;
+}
+.ant-menu-light .ant-menu-item {
+  border-radius: 8px !important;
+  margin-inline: 0 !important;
+  width: 100% !important;
+}
+.ant-pro-page-container-children-container {
+  padding-block: 0 !important;
+}
+.ant-pro-page-container-warp-page-header {
+  padding-inline: 0 !important;
+  padding-block-start: 0 !important;
+}
+.ant-page-header {
+  padding-inline: 0 !important;
+}
+
+/* 企业级通用卡片 */
+.cbp-enterprise-card,
+.ant-card {
+  border-radius: var(--cbp-radius) !important;
+  border: 1px solid var(--cbp-border) !important;
+  box-shadow: var(--cbp-shadow);
+  background: var(--cbp-card-bg);
+}
+.cbp-enterprise-card:hover {
+  box-shadow: var(--cbp-shadow-hover);
+}
+
+.cbp-stat-card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  border: 1px solid var(--cbp-border) !important;
+}
+.cbp-stat-card:hover {
+  box-shadow: var(--cbp-shadow-hover);
+  transform: translateY(-2px);
+  border-color: #d6e4ff !important;
+}
+
+/* 可点击 KPI / 导航卡 */
+.cbp-clickable-card {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+.cbp-clickable-card:hover {
+  box-shadow: var(--cbp-shadow-hover);
+  transform: translateY(-2px);
+  border-color: #91caff !important;
+}
+.cbp-clickable-card:active {
+  transform: translateY(0);
+}
+
+/* 工作流卡片 */
+.cbp-workflow-card {
+  height: 100%;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+.cbp-workflow-card:hover {
+  box-shadow: 0 10px 28px rgba(22, 119, 255, 0.12);
+  transform: translateY(-3px);
+  border-color: #91caff !important;
+}
+
+/* 图标瓷砖 */
+.cbp-icon-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e6f4ff 0%, #f0e8ff 100%);
+  color: #1677ff;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* AI 洞察 */
+.cbp-ai-insight {
+  background: linear-gradient(135deg, #eef4ff 0%, #f5f0ff 100%);
+  border-left: 3px solid #1677ff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  line-height: 1.8;
+  color: rgba(0, 0, 0, 0.78);
+  white-space: pre-wrap;
+}
+
+.cbp-platform-card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.cbp-platform-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+/* KPI 指标卡 */
+.cbp-kpi-card {
+  position: relative;
+  border-radius: 12px !important;
+  border: 1px solid var(--cbp-border) !important;
+  overflow: hidden;
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+  background: #ffffff;
+  height: 100%;
+}
+.cbp-kpi-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--cbp-kpi-color, #1677ff);
+}
+.cbp-kpi-card:hover {
+  box-shadow: 0 10px 30px rgba(22, 119, 255, 0.1);
+  transform: translateY(-2px);
+}
+.cbp-kpi-card .cbp-kpi-trend-up {
+  color: #cf1322;
+  font-size: 12px;
+}
+.cbp-kpi-card .cbp-kpi-trend-down {
+  color: #389e0d;
+  font-size: 12px;
+}
+
+/* 段落标题 */
+.cbp-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  margin: 0;
+  padding: 0;
+}
+.cbp-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  background: #1677ff;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* 页面顶栏条 */
+.cbp-page-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid var(--cbp-border);
+  border-radius: 10px;
+  box-shadow: var(--cbp-shadow);
+}
+
+/* 结果展示 */
+.cbp-result-hero {
+  background: linear-gradient(180deg, #f7faff 0%, #ffffff 100%) !important;
+  border: 1px solid #e6f0ff !important;
+  border-radius: 12px !important;
+}
+
+.cbp-code-block {
+  margin: 0;
+  padding: 12px 14px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cbp-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cbp-data-table th {
+  background: #fafafa;
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 500;
+  border-bottom: 1px solid #f0f0f0;
+  color: rgba(0, 0, 0, 0.65);
+}
+.cbp-data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f5f5f5;
+}
+.cbp-data-table tr:hover td {
+  background: #fafcff;
+}
+
+/* 采购状态机步骤条 */
+.cbp-status-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  overflow-x: auto;
+  padding: 8px 0 4px;
+}
+.cbp-status-step {
+  position: relative;
+  min-width: 88px;
+  flex: 1;
+  text-align: center;
+  padding: 0 4px;
+}
+.cbp-status-step::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: calc(50% + 14px);
+  right: calc(-50% + 14px);
+  height: 2px;
+  background: #e5e7eb;
+  z-index: 0;
+}
+.cbp-status-step:last-child::after {
+  display: none;
+}
+.cbp-status-step.is-done::after {
+  background: #52c41a;
+}
+.cbp-status-step.is-current::after {
+  background: linear-gradient(90deg, #1677ff 0%, #e5e7eb 100%);
+}
+.cbp-status-dot {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  border: 2px solid #d9d9d9;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.45);
+}
+.cbp-status-step.is-done .cbp-status-dot {
+  border-color: #52c41a;
+  background: #52c41a;
+  color: #fff;
+}
+.cbp-status-step.is-current .cbp-status-dot {
+  border-color: #1677ff;
+  background: #1677ff;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.15);
+}
+.cbp-status-label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.4;
+}
+.cbp-status-step.is-done .cbp-status-label,
+.cbp-status-step.is-current .cbp-status-label {
+  color: rgba(0, 0, 0, 0.88);
+  font-weight: 600;
+}
+
+/* 指标微卡 */
+.cbp-metric-tile {
+  background: #fafbfd;
+  border: 1px solid var(--cbp-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  height: 100%;
+}
+.cbp-metric-tile .label {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.cbp-metric-tile .value {
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.cbp-metric-tile .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* 详情页英雄区 */
+.cbp-detail-hero {
+  background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+  border: 1px solid #e8f0ff !important;
+}
+
+/* 表格微调 */
+.ant-pro-table .ant-table-wrapper,
+.ant-table-wrapper {
+  background: #fff;
+}
+.ant-pro-card {
+  border-radius: 12px !important;
+}
+.ant-table-thead > tr > th {
+  background: #fafbfc !important;
+  color: rgba(0, 0, 0, 0.65) !important;
+  font-weight: 600 !important;
+}
+.ant-table-tbody > tr:hover > td {
+  background: #f7faff !important;
+}
+
+/* 空状态 / 加载 */
+.ant-empty-description {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* AI badge */
+.cbp-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: #eef4ff;
+  color: #1677ff;
+  border: 1px solid #d6e4ff;
+}
+
+/* 待办列表 */
+.cbp-todo-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px dashed #eef0f4;
+}
+.cbp-todo-item:last-child {
+  border-bottom: none;
+}
+
+/* 预警条 */
+.cbp-alert-strip {
+  border-radius: 12px;
+  border: 1px solid #ffccc7 !important;
+  background: linear-gradient(100deg, #fff7f6 0%, #ffffff 55%) !important;
+  box-shadow: none !important;
+}
+.cbp-alert-strip .ant-card-head {
+  border-bottom: 1px solid #ffe7e4 !important;
+  min-height: 44px;
+}
+
+/* 工作台 */
+.cbp-dashboard-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid #e8f0ff;
+  background: linear-gradient(120deg, #f7faff 0%, #ffffff 48%, #f8f5ff 100%);
+  box-shadow: var(--cbp-shadow);
+}
+.cbp-dashboard-banner-title {
+  font-size: 16px;
+  font-weight: 650;
+  color: rgba(0, 0, 0, 0.88);
+  letter-spacing: 0.2px;
+}
+.cbp-dashboard-banner-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.6;
+}
+.cbp-chart-card {
+  height: 100%;
+  border-radius: 12px !important;
+  border: 1px solid var(--cbp-border) !important;
+  box-shadow: var(--cbp-shadow) !important;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.cbp-chart-card:hover {
+  border-color: #dbe7ff !important;
+  box-shadow: 0 8px 24px rgba(22, 119, 255, 0.06) !important;
+}
+
+/* === 选品决策建议卡片 === */
+.cbp-decision-card {
+  padding: 18px 20px 16px;
+}
+.cbp-decision-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.cbp-decision-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+.cbp-decision-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cbp-decision-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.65;
+}
+.cbp-decision-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  padding: 10px 14px;
+  border: 2px solid;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  flex-shrink: 0;
+}
+.cbp-decision-result-num {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.5px;
+}
+.cbp-decision-result-text {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.cbp-decision-dims {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+}
+.cbp-decision-dim {
+  min-width: 0;
+}
+.cbp-decision-dim-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 4px;
+}
+.cbp-decision-dim-score {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.85);
+}
+.cbp-decision-dim-weight {
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+/* === 风险提示列表 === */
+.cbp-risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cbp-risk-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  background: #fafbfd;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  line-height: 1.55;
+}
+.cbp-risk-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: #8c8c8c;
+}
+.cbp-risk-high {
+  background: #fff1f0;
+  border-color: #ffccc7;
+}
+.cbp-risk-high .cbp-risk-dot {
+  background: #cf1322;
+  box-shadow: 0 0 0 3px rgba(207, 19, 34, 0.12);
+}
+.cbp-risk-medium {
+  background: #fffbe6;
+  border-color: #ffe58f;
+}
+.cbp-risk-medium .cbp-risk-dot {
+  background: #d46b08;
+  box-shadow: 0 0 0 3px rgba(212, 107, 8, 0.12);
+}
+.cbp-risk-low {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+}
+.cbp-risk-low .cbp-risk-dot {
+  background: #389e0d;
+  box-shadow: 0 0 0 3px rgba(56, 158, 13, 0.12);
+}
+
+@media (max-width: 768px) {
+  .cbp-decision-dims {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cbp-decision-result {
+    min-width: 80px;
+    padding: 8px 10px;
+  }
+  .cbp-decision-result-num {
+    font-size: 22px;
+  }
+}
+
+/* 消息中心弹层 */
+.cbp-msg-popover {
+  width: 360px;
+}
+
+/* 操作按钮组 */
+.cbp-table-actions .ant-btn-link {
+  padding-inline: 4px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .cbp-status-step {
+    min-width: 72px;
+  }
+  .cbp-page-context {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .cbp-dashboard-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
