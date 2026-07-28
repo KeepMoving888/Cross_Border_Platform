@@ -18,6 +18,17 @@ import (
 	"github.com/cb-platform/internal/pkg/logger"
 )
 
+// 服务角色常量(APP_ROLE 环境变量控制)
+//
+//	gateway: API 网关,处理业务 CRUD + 转发 AI/RAG 请求(默认,单体模式同此)
+//	ai:      AI 服务,只承接 AI 工作流执行
+//	rag:     RAG 服务,只承接向量检索和文档入库
+const (
+	RoleGateway = "gateway"
+	RoleAI      = "ai"
+	RoleRAG     = "rag"
+)
+
 // 版本信息(由 -ldflags 在构建时注入)
 var (
 	Version     = "dev"
@@ -71,27 +82,40 @@ func main() {
 		logger.Get().Infof("build: commit=%s date=%s", info.BuildCommit, info.BuildDate)
 	}
 
-	// 初始化数据库
+	// 服务角色(由 APP_ROLE 环境变量控制,默认 gateway)
+	// 微服务部署时,各容器通过 APP_ROLE 裁剪初始化范围,实现资源隔离
+	role := cfg.App.Role
+	if role == "" {
+		role = RoleGateway
+	}
+	logger.Get().Infof("service role: %s (microservices mode=%v)", role, role != RoleGateway)
+
+	// ============== 数据库初始化(所有角色共享) ==============
+	// MySQL: 业务数据 + AI 工作流元数据 + RAG 文档元数据(所有角色都需要)
 	mysqlDB, err := database.InitMySQL(cfg.MySQL)
 	if err != nil {
 		logger.Get().Fatalf("init mysql failed: %v", err)
 	}
 
-	// 自动迁移
-	if err := database.AutoMigrate(mysqlDB); err != nil {
-		logger.Get().Fatalf("auto migrate failed: %v", err)
+	// 自动迁移(仅 gateway 角色执行,避免多服务并发迁移冲突)
+	if role == RoleGateway {
+		if err := database.AutoMigrate(mysqlDB); err != nil {
+			logger.Get().Fatalf("auto migrate failed: %v", err)
+		}
 	}
 
-	// 初始化 Redis
+	// Redis: 缓存(所有角色共享)
 	_, err = database.InitRedis(cfg.Redis)
 	if err != nil {
 		logger.Get().Warnf("init redis failed (some features may not work): %v", err)
 	}
 
-	// 初始化 PG(向量库,可选)
-	_, err = database.InitPostgres(cfg.PG)
-	if err != nil {
-		logger.Get().Warnf("init postgres failed (RAG features may not work): %v", err)
+	// PostgreSQL + pgvector: 向量库(ai/rag 角色需要,gateway 不需要)
+	if role == RoleAI || role == RoleRAG {
+		_, err = database.InitPostgres(cfg.PG)
+		if err != nil {
+			logger.Get().Warnf("init postgres failed (RAG features may not work): %v", err)
+		}
 	}
 
 	// 仅迁移模式
@@ -100,8 +124,8 @@ func main() {
 		return
 	}
 
-	// 初始化种子数据
-	if *seedOnly || cfg.IsDev() {
+	// 种子数据(仅 gateway 在开发模式下执行,避免多服务重复 seed)
+	if role == RoleGateway && (*seedOnly || cfg.IsDev()) {
 		if err := database.SeedData(mysqlDB); err != nil {
 			logger.Get().Warnf("seed data failed: %v", err)
 		}
@@ -111,49 +135,52 @@ func main() {
 		}
 	}
 
-	// 对账自动匹配:启动时执行一次(seed 之后),自动匹配账单与采购单并标记差异
-	reconSvc := finance.NewReconciliationService(mysqlDB)
-	if m, d, err := reconSvc.AutoMatch(); err != nil {
-		logger.Get().Warnf("reconciliation auto match failed: %v", err)
-	} else {
-		logger.Get().Infof("reconciliation auto match done: matched=%d, disputed=%d", m, d)
-	}
-
-	// 库存预警定时检查：启动时先执行一次，之后每小时执行一次
-	// 检查低库存/无货记录，自动创建采购询价 + 消息
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-		// 启动时先执行一次
-		alertSvc := inventory.NewAlertService(mysqlDB)
-		_ = alertSvc.CheckAndTrigger()
-		for range ticker.C {
-			logger.Get().Info("scheduled inventory alert check triggered")
-			if err := alertSvc.CheckAndTrigger(); err != nil {
-				logger.Get().Warnf("scheduled alert check failed: %v", err)
-			}
+	// ============== 业务后台任务(仅 gateway 角色) ==============
+	// 对账自动匹配 + 库存预警:业务定时任务,只在 gateway 启动避免重复执行
+	if role == RoleGateway {
+		reconSvc := finance.NewReconciliationService(mysqlDB)
+		if m, d, err := reconSvc.AutoMatch(); err != nil {
+			logger.Get().Warnf("reconciliation auto match failed: %v", err)
+		} else {
+			logger.Get().Infof("reconciliation auto match done: matched=%d, disputed=%d", m, d)
 		}
-	}()
 
-	// 启动 AI 工作流调度器
-	aiEngine := ai.GetEngine(mysqlDB)
-	// 注入 PostgreSQL 和 Embedder(启用 RAG 向量检索)
-	if pgDB := database.GetPostgres(); pgDB != nil {
-		aiEngine.SetPostgres(pgDB)
-		aiEngine.SetEmbedder(ai.NewEmbeddingProvider(cfg.LLM))
+		go func() {
+			ticker := time.NewTicker(1 * time.Hour)
+			defer ticker.Stop()
+			alertSvc := inventory.NewAlertService(mysqlDB)
+			_ = alertSvc.CheckAndTrigger()
+			for range ticker.C {
+				logger.Get().Info("scheduled inventory alert check triggered")
+				if err := alertSvc.CheckAndTrigger(); err != nil {
+					logger.Get().Warnf("scheduled alert check failed: %v", err)
+				}
+			}
+		}()
 	}
-	// 注入 Redis(启用 RAG 检索结果缓存,可选)
-	if rdb := database.GetRedisSafe(); rdb != nil {
-		aiEngine.SetRedis(rdb)
-	}
-	scheduler := ai.NewScheduler(mysqlDB, aiEngine)
-	go scheduler.Start()
-	defer scheduler.Stop()
 
-	// 启动 HTTP 服务
-	// 微服务模式:根据 cfg.Service 启用反向代理转发(AI/RAG 请求转发到下游服务)
-	// 单体模式:cfg.Service 为空,所有路由本地处理
-	router := http.NewRouter(mysqlDB, cfg)
+	// ============== AI 工作流调度器(gateway 单体模式 + ai 角色) ==============
+	// rag 角色不需要 AI 工作流引擎,只处理向量检索
+	if role == RoleGateway || role == RoleAI {
+		aiEngine := ai.GetEngine(mysqlDB)
+		if pgDB := database.GetPostgres(); pgDB != nil {
+			aiEngine.SetPostgres(pgDB)
+			aiEngine.SetEmbedder(ai.NewEmbeddingProvider(cfg.LLM))
+		}
+		if rdb := database.GetRedisSafe(); rdb != nil {
+			aiEngine.SetRedis(rdb)
+		}
+		scheduler := ai.NewScheduler(mysqlDB, aiEngine)
+		go scheduler.Start()
+		defer scheduler.Stop()
+	}
+
+	// ============== HTTP 服务(所有角色都启动,路由按角色裁剪) ==============
+	// gateway: 注册业务路由 + 反向代理(配置了 ServiceURL 时)
+	// ai:      只注册 AI 工作流相关路由
+	// rag:     只注册 RAG 知识库 + 向量检索路由
+	// NewRouterWithOptions 从 cfg.App.Role 读取角色并裁剪路由
+	router := http.NewRouterWithOptions(mysqlDB, cfg)
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
 
 	srv := &http.ServerImpl{

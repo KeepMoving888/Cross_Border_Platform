@@ -130,68 +130,98 @@ cb-platform (单体)
 
 ## 三、代码拆分方案
 
-### 目录结构(保持单仓库,多 cmd 入口)
+### 目录结构(保持单仓库,单一 cmd 入口 + APP_ROLE 角色控制)
 
 ```
 cb-platform/
 ├── cmd/
-│   ├── server/          # API Gateway 入口(现有,精简为业务+转发)
-│   ├── ai-service/      # AI 服务入口(Phase 2 新增)
-│   └── rag-service/     # RAG 服务入口(Phase 2 新增)
+│   └── server/              # 唯一入口,通过 APP_ROLE 环境变量控制服务角色
 ├── internal/
 │   ├── application/
-│   │   ├── ai/          # AI 引擎(Phase 2 移至 ai-service)
-│   │   ├── finance/     # 财务(留 API Gateway)
-│   │   ├── inventory/   # 库存(留 API Gateway)
-│   │   └── purchase/    # 采购(留 API Gateway)
+│   │   ├── ai/              # AI 引擎(仅 gateway/ai 角色初始化)
+│   │   ├── finance/         # 财务(仅 gateway 角色初始化)
+│   │   ├── inventory/       # 库存(仅 gateway 角色初始化)
+│   │   └── purchase/        # 采购(仅 gateway 角色初始化)
 │   ├── interfaces/
 │   │   └── http/
-│   │       ├── server.go        # 路由注册(支持按角色裁剪)
-│   │       ├── proxy.go         # 反向代理中间件(已实现)
-│   │       └── handler/         # 12 个 handler(共享)
-│   ├── domain/models/   # 共享领域模型
-│   └── pkg/             # 共享基础设施
-│       ├── config/      # 配置(新增 ServiceConfig 微服务配置)
+│   │       ├── server.go    # 路由注册(按 APP_ROLE 裁剪)
+│   │       ├── proxy.go     # 反向代理中间件(仅 gateway 启用)
+│   │       └── handler/     # 12 个 handler(共享,按角色注册)
+│   ├── domain/models/       # 共享领域模型
+│   └── pkg/                 # 共享基础设施
+│       ├── config/          # 配置(ServiceConfig + App.Role)
 │       └── ...
 ├── deployments/
-│   ├── docker-compose.yml              # 单体版(现有)
-│   └── docker-compose-microservices.yml # 微服务版(已实现)
+│   ├── docker-compose.yml              # 单体版(APP_ROLE=gateway,默认)
+│   └── docker-compose-microservices.yml # 微服务版(3 容器,各自 APP_ROLE)
 ```
 
 ### 拆分原则
 
-1. **共享领域模型**:`domain/models` 保持共享,避免重复定义
-2. **共享基础设施**:`pkg/config`、`pkg/database`、`pkg/logger` 保持共享
-3. **共享 handler**:12 个 handler 保持共享,各服务按需注册路由
-4. **独立 cmd 入口**:每个服务有独立的 `main.go`,按需初始化依赖
-5. **配置驱动**:通过环境变量 `APP_ROLE=gateway|ai|rag` 控制服务角色
+1. **单一二进制多角色**:同一个 `cmd/server/main.go` 通过 `APP_ROLE` 环境变量控制初始化范围和路由注册,无需多 cmd 入口
+2. **共享领域模型**:`domain/models` 保持共享,避免重复定义
+3. **共享基础设施**:`pkg/config`、`pkg/database`、`pkg/logger` 保持共享
+4. **共享 handler**:12 个 handler 保持共享,`registerRoutes` 按 `APP_ROLE` 选择性注册
+5. **配置驱动**:`APP_ROLE=gateway|ai|rag` 控制服务角色,`AI_SERVICE_URL`/`RAG_SERVICE_URL` 控制反向代理
+
+### APP_ROLE 角色裁剪矩阵
+
+| 初始化项 | gateway | ai | rag |
+|---|---|---|---|
+| MySQL 连接 | ✅ | ✅ | ✅ |
+| Redis 连接 | ✅ | ✅ | ✅ |
+| PostgreSQL + pgvector | ❌ | ✅ | ✅ |
+| AutoMigrate | ✅ | ❌ | ❌ |
+| SeedData(开发模式) | ✅ | ❌ | ❌ |
+| 对账自动匹配 | ✅ | ❌ | ❌ |
+| 库存预警定时任务 | ✅ | ❌ | ❌ |
+| AI 工作流调度器 | ✅ | ✅ | ❌ |
+| 反向代理转发 | ✅(配置时) | ❌ | ❌ |
+| 业务 CRUD 路由 | ✅ | ❌ | ❌ |
+| AI 工作流路由 | ✅ | ✅ | ❌ |
+| RAG 知识库路由 | ✅ | ❌ | ✅ |
 
 ## 四、实施路径(渐进式)
 
-### Phase 1:反向代理转发(已实现,零业务代码改动)
+### Phase 1:反向代理 + APP_ROLE 角色裁剪(已实现)
 
-在 `server.go` 的 `NewRouter` 中注入 `ProxyConfig`,当配置了 `AI_SERVICE_URL` / `RAG_SERVICE_URL` 时自动启用反向代理转发。
+**核心实现**:
+- [proxy.go](../internal/interfaces/http/proxy.go):反向代理中间件,配置驱动转发
+- [server.go](../internal/interfaces/http/server.go):`registerRoutes` 按 `APP_ROLE` 裁剪路由
+- [main.go](../cmd/server/main.go):按 `APP_ROLE` 裁剪初始化范围(数据库/调度器/后台任务)
 
-**核心实现**:[proxy.go](../internal/interfaces/http/proxy.go)
+**工作原理**:
 
 ```go
-// 当配置了 AI_SERVICE_URL 时,/api/v1/ai/workflows 等路径转发到 AI Service
-// 当配置了 RAG_SERVICE_URL 时,/api/v1/ai/knowledge-bases 等路径转发到 RAG Service
+// 1. main.go 根据 APP_ROLE 裁剪初始化
+role := cfg.App.Role  // gateway(默认) / ai / rag
+if role == RoleGateway {
+    // 启动业务后台任务:对账、库存预警
+    // 执行 AutoMigrate、SeedData
+}
+if role == RoleGateway || role == RoleAI {
+    // 启动 AI 工作流调度器
+}
+// rag 角色只加载 PG + Embedder,不启动 AI 引擎
+
+// 2. server.go 根据 APP_ROLE 裁剪路由
+// gateway: 全部业务路由 + AI/RAG 路由(本地处理) + 反向代理(配置时)
+// ai:      仅 auth + AI 工作流路由(workflows/runs/prompts/analyze/generate/reply)
+// rag:     仅 auth + RAG 路由(knowledge-bases/rag/search)
+
+// 3. 反向代理(仅 gateway 启用)
+// 配置 AI_SERVICE_URL 后,/api/v1/ai/workflows 等转发到 AI Service
+// 配置 RAG_SERVICE_URL 后,/api/v1/ai/knowledge-bases 等转发到 RAG Service
 // 未配置时,所有路由本地处理(单体模式)
-proxy := NewProxyMiddleware(cfg.Service)
-proxy.Register(r)
 ```
 
-**优势**:零业务代码改动,单体和微服务模式自由切换。
+**优势**:
+- 单一二进制,构建/部署流程统一
+- 配置驱动,单体/微服务模式自由切换
+- 资源隔离:ai 服务不加载业务模块,rag 服务不加载 AI 引擎
+- 渐进式:无需拆分代码或仓库,通过环境变量即可切换
 
-### Phase 2:独立 cmd 入口(代码拆分)
-
-创建独立的 `cmd/ai-service/main.go` 和 `cmd/rag-service/main.go`,各自只初始化所需依赖:
-
-- `ai-service`:只加载 AI 引擎 + LLM + 调度器,不初始化财务/库存/采购服务
-- `rag-service`:只加载 RAG 服务 + VectorStore + Embedder,不初始化 AI 工作流
-
-### Phase 3:独立仓库(可选,团队扩大后)
+### Phase 2:独立仓库(可选,团队扩大后)
 
 当团队 > 5 人时,拆分为独立仓库:
 - `cb-platform-core`:API Gateway

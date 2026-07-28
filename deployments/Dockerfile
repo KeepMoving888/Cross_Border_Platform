@@ -60,9 +60,12 @@ COPY --from=builder /build/migrations /app/migrations
 RUN chown -R app:app /app
 USER app
 
-EXPOSE 8080
+# 微服务部署:单一镜像通过 APP_ROLE 环境变量适配不同角色(gateway/ai/rag)
+# APP_PORT 控制监听端口(gateway=8080, ai=8081, rag=8082),由 docker-compose 注入
+EXPOSE 8080 8081 8082
 
+# HEALTHCHECK 使用 shell 形式以支持 APP_PORT 变量展开
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f "http://localhost:${APP_PORT:-8080}/health" || exit 1
 
 ENTRYPOINT ["/app/cb-platform"]

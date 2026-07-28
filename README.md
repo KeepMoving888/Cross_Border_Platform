@@ -56,6 +56,7 @@
 - **VectorStore 抽象层**：`VectorStore` 接口解耦 RAGService 与向量存储实现，3 种可插拔实现：`PgVectorStore`（生产，批量 UPDATE...FROM VALUES 优化）、`MilvusStore`（REST API，10M+ 大规模向量，IVF/HNSW 索引）、`InMemoryVectorStore`（测试/本地开发，暴力余弦相似度）；`NewVectorStore` 工厂函数按配置自动选择
 - **批量入库**：`BatchIndexDocuments` 跨文档批量入库，合并所有 chunks 一次性调用 Embedding API + 单次 UpsertVectors 批量写入，显著降低 API 调用次数和 RTT
 - **微服务部署**：支持单体（`docker-compose.yml`）和微服务（`docker-compose-microservices.yml`）两种部署模式，微服务版拆分 API Gateway + AI Service + RAG Service 3 个服务，实现资源隔离和独立扩展
+- **单一镜像多角色**：通过 `APP_ROLE` 环境变量（gateway/ai/rag）控制服务角色，同一二进制按角色裁剪初始化范围和路由注册，gateway 启动业务后台任务（对账/库存预警），ai 启动工作流调度器，rag 仅加载 VectorStore + Embedder
 - **API Gateway 反向代理**：`ProxyMiddleware` 基于 `httputil.ReverseProxy` 实现 8 条转发规则，按子路径精确匹配 AI/RAG 服务，JWT 透明转发，单体/微服务模式配置驱动切换
 - **RAG 监控仪表盘**：前端对接 Prometheus HTTP API，实时展示检索成功率/缓存命中率/平均延迟/策略分布，阈值变色预警
 - **RAG 多模态**：支持 PDF / Word(.docx) / Markdown / TXT 文件上传，自动解析为纯文本后分块入库（DocxParser 解析 XML、PDFParser 提取文本流）

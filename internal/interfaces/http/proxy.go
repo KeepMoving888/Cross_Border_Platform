@@ -121,9 +121,9 @@ func (pm *ProxyMiddleware) registerProxyRoute(r *gin.Engine, route proxyRoute) {
 			req.Host = target.Host
 		},
 		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+			IdleConnTimeout:       90 * time.Second,
 			ResponseHeaderTimeout: timeout,
 		},
 		ErrorHandler: func(w http.ResponseWriter, req *http.Request, err error) {
