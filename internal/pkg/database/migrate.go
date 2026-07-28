@@ -42,6 +42,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.AIWorkflowRun{},
 		&models.KnowledgeBase{},
 		&models.KnowledgeDocument{},
+		&models.KnowledgeChunk{},
 		&models.PromptTemplate{},
 		// 消息中心
 		&models.Message{},

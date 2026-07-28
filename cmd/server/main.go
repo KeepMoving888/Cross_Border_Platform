@@ -137,6 +137,11 @@ func main() {
 
 	// 启动 AI 工作流调度器
 	aiEngine := ai.GetEngine(mysqlDB)
+	// 注入 PostgreSQL 和 Embedder(启用 RAG 向量检索)
+	if pgDB := database.GetPostgres(); pgDB != nil {
+		aiEngine.SetPostgres(pgDB)
+		aiEngine.SetEmbedder(ai.NewEmbeddingProvider(cfg.LLM))
+	}
 	scheduler := ai.NewScheduler(mysqlDB, aiEngine)
 	go scheduler.Start()
 	defer scheduler.Stop()

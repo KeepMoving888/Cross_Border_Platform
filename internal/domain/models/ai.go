@@ -106,6 +106,23 @@ type KnowledgeDocument struct {
 
 func (KnowledgeDocument) TableName() string { return "knowledge_documents" }
 
+// KnowledgeChunk 知识文档分块(向量存储)
+// 存储于 PostgreSQL + pgvector,支持语义检索
+type KnowledgeChunk struct {
+	BaseModel
+	KnowledgeBaseID uint   `gorm:"index;not null" json:"knowledge_base_id"`
+	KnowledgeDocID  uint   `gorm:"index;not null" json:"knowledge_doc_id"`
+	ChunkIndex      int    `gorm:"not null" json:"chunk_index"`       // 分块序号(从 0 开始)
+	Content         string `gorm:"type:text;not null" json:"content"` // 分块文本内容
+	TokenCount      int    `gorm:"default:0" json:"token_count"`      // 分块 token 估算数
+	EmbeddingModel  string `gorm:"size:64" json:"embedding_model"`    // 生成向量的模型
+	// Embedding 向量(pgvector,使用 string 类型避免 GORM 类型映射问题)
+	// 存储格式: "[0.1,0.2,0.3,...]"
+	Embedding string `gorm:"type:text" json:"-"` // pgvector 列通过原生 SQL 维护,不入 GORM 字段
+}
+
+func (KnowledgeChunk) TableName() string { return "knowledge_chunks" }
+
 // PromptTemplate Prompt 模板
 type PromptTemplate struct {
 	BaseModel

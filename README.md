@@ -39,7 +39,7 @@
 - **AI 工作流引擎**：DAG 拓扑执行，支持 input → llm/rag/text2sql/sql_execute/condition → output 节点链路
 - **LLM Provider 抽象**：GLM / Claude / DeepSeek / Qwen / OpenAI 兼容协议，API Key 为空时自动回退 BuiltinLLMProvider（基于场景识别的结构化输出）
 - **Text2SQL**：自然语言 → SQL 生成 → SELECT 安全校验 → 执行 → 业务洞察生成
-- **RAG 检索**：TF-IDF 关键词匹配（简化版），支持知识库文档上传+分块检索+上下文注入
+- **RAG 检索**：pgvector 向量检索（余弦相似度）+ TF-IDF 降级，支持文档分块+Embedding 入库+语义检索+上下文注入
 - **定时调度器**：后台 goroutine 每分钟扫描启用的工作流，支持 scheduled 触发
 - **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`
 
@@ -63,14 +63,6 @@
 | AI 工作流 | 5 个预置场景、工作流历史记录、趋势图、Token/成本统计 |
 | 客服消息 | 多平台消息聚合、AI 回复建议、意图识别、多语言支持 |
 | 工作流编排 | 可视化拖拽编排、7 种节点类型、JSON 导出/导入 |
-
-## 数据规模
-
-- **51 个 Go 文件**，10,555 行后端代码
-- **35 个 TypeScript/TSX 文件**，9,058 行前端代码
-- **8 家供应商**（A/B/C 级，覆盖深圳/东莞/义乌/广州/佛山/宁波）
-- **5 个仓库**（国内主仓 + 美西/欧洲海外仓 + FBA 仓）
-- **5 个 AI 工作流**（选品分析/采购助手/智能客服/数据分析/内容生成）
 
 ## 技术栈
 
@@ -123,3 +115,12 @@ cb-platform/
 ├── deployments/             # Docker Compose 部署
 └── docs/                    # 文档与截图
 ```
+
+## License
+
+本项目采用 **CC BY-NC 4.0** (Creative Commons Attribution-NonCommercial 4.0 International) 协议开源。
+
+- ✅ 允许：学习、研究、个人使用、二次开发（需署名）
+- ❌ 禁止：任何形式的商业用途（销售、SaaS 服务、内部商业运营等）
+
+详细条款见 [LICENSE](LICENSE) 文件。如需商业授权，请联系仓库所有者。

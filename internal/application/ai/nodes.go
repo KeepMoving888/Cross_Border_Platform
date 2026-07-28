@@ -166,8 +166,8 @@ func (n *LLMNode) Execute(ctx context.Context, input map[string]interface{}) (ma
 
 // RAGNode 检索增强生成节点
 type RAGNode struct {
-	def NodeDefinition
-	db  *gorm.DB
+	def        NodeDefinition
+	ragService *RAGService
 }
 
 func (n *RAGNode) Type() string { return "rag" }
@@ -185,28 +185,26 @@ func (n *RAGNode) Execute(ctx context.Context, input map[string]interface{}) (ma
 		return map[string]interface{}{"rag_context": ""}, nil
 	}
 
-	// 简化实现:从知识库文档中关键词检索(生产环境应使用向量检索)
-	kbID, _ := n.def.Config["knowledge_base_id"].(float64)
-	limit := 5
-	if l, ok := n.def.Config["top_k"].(float64); ok {
-		limit = int(l)
+	// 从节点配置读取知识库 ID 和 topK
+	kbID := uint(0)
+	if id, ok := n.def.Config["knowledge_base_id"].(float64); ok {
+		kbID = uint(id)
+	}
+	topK := 5
+	if k, ok := n.def.Config["top_k"].(float64); ok {
+		topK = int(k)
 	}
 
-	var docs []models.KnowledgeDocument
-	q := n.db.Model(&models.KnowledgeDocument{})
-	if kbID > 0 {
-		q = q.Where("knowledge_base_id = ?", int(kbID))
+	// 调用 RAGService 检索(优先向量检索,降级 TF-IDF)
+	docs, err := n.ragService.Search(query, kbID, topK)
+	if err != nil {
+		return nil, fmt.Errorf("rag search failed: %w", err)
 	}
-	q = q.Where("status = ?", "ready").
-		Where("content LIKE ?", "%"+query+"%").
-		Order("updated_at DESC").
-		Limit(limit)
-	q.Find(&docs)
 
 	// 拼接上下文
 	var sb strings.Builder
 	for i, d := range docs {
-		sb.WriteString(fmt.Sprintf("[文档%d] %s\n%s\n\n", i+1, d.Title, truncate(d.Content, 500)))
+		sb.WriteString(fmt.Sprintf("[文档%d] %s\n%s\n\n", i+1, d.Title, d.Content))
 	}
 	contextStr := sb.String()
 
@@ -214,6 +212,7 @@ func (n *RAGNode) Execute(ctx context.Context, input map[string]interface{}) (ma
 		"rag_context":   contextStr,
 		"rag_documents": docs,
 		"query":         query,
+		"doc_count":     len(docs),
 	}, nil
 }
 

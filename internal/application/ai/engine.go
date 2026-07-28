@@ -33,7 +33,9 @@ type WorkflowResult struct {
 // Engine 工作流执行引擎
 type Engine struct {
 	db          *gorm.DB
+	pgDB        *gorm.DB // PostgreSQL + pgvector(可选,用于 RAG 向量检索)
 	llmProvider LLMProvider
+	embedder    EmbeddingProvider // Embedding 生成器
 	registry    map[string]NodeFactory
 	mu          sync.RWMutex
 }
@@ -62,6 +64,16 @@ func NewEngine(db *gorm.DB) *Engine {
 	}
 	e.registerDefaults()
 	return e
+}
+
+// SetPostgres 设置 PostgreSQL 实例(启用 RAG 向量检索)
+func (e *Engine) SetPostgres(pgDB *gorm.DB) {
+	e.pgDB = pgDB
+}
+
+// SetEmbedder 设置 Embedding Provider
+func (e *Engine) SetEmbedder(p EmbeddingProvider) {
+	e.embedder = p
 }
 
 // NodeFactory 节点工厂函数
@@ -106,7 +118,7 @@ func (e *Engine) registerDefaults() {
 		return &LLMNode{def: def, provider: e.llmProvider}, nil
 	}
 	e.registry["rag"] = func(def NodeDefinition) (Node, error) {
-		return &RAGNode{def: def, db: e.db}, nil
+		return &RAGNode{def: def, ragService: NewRAGService(e.db, e.pgDB, config.Get().LLM)}, nil
 	}
 	e.registry["condition"] = func(def NodeDefinition) (Node, error) {
 		return &ConditionNode{def: def}, nil

@@ -1,12 +1,16 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 
 	"github.com/cb-platform/internal/application/ai"
 	"github.com/cb-platform/internal/domain/models"
+	"github.com/cb-platform/internal/pkg/config"
+	"github.com/cb-platform/internal/pkg/database"
 	"github.com/cb-platform/internal/pkg/errors"
+	"github.com/cb-platform/internal/pkg/logger"
 	"github.com/cb-platform/internal/pkg/middleware"
 	"github.com/cb-platform/internal/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -395,8 +399,8 @@ func (h *AIHandler) UploadDocument(c *gin.Context) {
 		Title:           req.Title,
 		Source:          req.Source,
 		Content:         req.Content,
-		ChunkCount:      1,
-		Status:          "ready",
+		ChunkCount:      0,
+		Status:          "processing",
 	}
 	if err := h.db.Create(&doc).Error; err != nil {
 		response.Fail(c, errors.ErrDBOperation)
@@ -405,7 +409,24 @@ func (h *AIHandler) UploadDocument(c *gin.Context) {
 	// 更新知识库文档计数
 	h.db.Model(&models.KnowledgeBase{}).Where("id = ?", kbID).
 		UpdateColumn("document_count", gorm.Expr("document_count + 1"))
-	response.OKWithMsg(c, "文档上传成功", doc)
+
+	// 异步分块 + 向量化入库(不阻塞响应)
+	go func(docID uint) {
+		ragService := ai.NewRAGService(h.db, database.GetPostgres(), config.Get().LLM)
+		var d models.KnowledgeDocument
+		if err := h.db.First(&d, docID).Error; err != nil {
+			logger.Get().Errorf("load document %d failed: %v", docID, err)
+			return
+		}
+		if err := ragService.IndexDocument(context.Background(), &d, ai.DefaultChunkConfig()); err != nil {
+			logger.Get().Errorf("index document %d failed: %v", docID, err)
+			d.Status = "failed"
+			d.Error = err.Error()
+			h.db.Save(&d)
+		}
+	}(doc.ID)
+
+	response.OKWithMsg(c, "文档上传成功,正在分块向量化", doc)
 }
 
 func (h *AIHandler) ListDocuments(c *gin.Context) {
@@ -534,7 +555,7 @@ func (h *AIHandler) RAGSearch(c *gin.Context) {
 	if req.TopK <= 0 {
 		req.TopK = 5
 	}
-	ragService := ai.NewRAGService(h.db)
+	ragService := ai.NewRAGService(h.db, database.GetPostgres(), config.Get().LLM)
 	docs, err := ragService.Search(req.Query, req.KnowledgeBaseID, req.TopK)
 	if err != nil {
 		response.Fail(c, errors.Wrap(err, 9003, "RAG 检索失败"))
