@@ -9,7 +9,10 @@ import type {
   AIWorkflow,
   AIWorkflowRunRequest,
   AIWorkflowRunResult,
+  KnowledgeBase,
+  KnowledgeDocument,
   PageResponse,
+  RAGSearchResult,
 } from '@/types/api';
 
 export async function listAIWorkflows(): Promise<PageResponse<AIWorkflow>> {
@@ -44,4 +47,43 @@ export async function listAIRuns(
   params: { workflow_code?: string; status?: string; page?: number; page_size?: number } = {},
 ): Promise<PageResponse<AIWorkflowRunResult>> {
   return get<PageResponse<AIWorkflowRunResult>>('/ai/runs', params as Record<string, unknown>);
+}
+
+// ============== 知识库管理(RAG) ==============
+
+/** 知识库列表 */
+export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
+  return get<KnowledgeBase[]>('/ai/knowledge-bases');
+}
+
+/** 创建知识库 */
+export async function createKnowledgeBase(payload: {
+  name: string;
+  code?: string;
+  description?: string;
+  type?: string;
+}): Promise<KnowledgeBase> {
+  return post<KnowledgeBase>('/ai/knowledge-bases', payload);
+}
+
+/** 知识库下的文档列表 */
+export async function listDocuments(knowledgeBaseID: number): Promise<KnowledgeDocument[]> {
+  return get<KnowledgeDocument[]>(`/ai/knowledge-bases/${knowledgeBaseID}/documents`);
+}
+
+/** 上传文档(纯文本 content,后端异步分块+向量化入库) */
+export async function uploadDocument(
+  knowledgeBaseID: number,
+  payload: { title: string; content: string; source?: string },
+): Promise<KnowledgeDocument> {
+  return post<KnowledgeDocument>(`/ai/knowledge-bases/${knowledgeBaseID}/documents`, payload);
+}
+
+/** RAG 检索测试:输入 query 返回 top-K 文档分块 */
+export async function ragSearch(payload: {
+  query: string;
+  knowledge_base_id: number;
+  top_k?: number;
+}): Promise<RAGSearchResult> {
+  return post<RAGSearchResult>('/ai/rag/search', payload);
 }

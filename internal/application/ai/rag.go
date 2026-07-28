@@ -6,19 +6,28 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/cb-platform/internal/domain/models"
 	"github.com/cb-platform/internal/pkg/config"
 	"github.com/cb-platform/internal/pkg/logger"
+	"github.com/cb-platform/internal/pkg/middleware"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
+// RAG 检索缓存 TTL:1 小时
+// 相同 query 在窗口内复用 embedding 与检索结果,显著降低 Embedding API 成本与 P95 延迟
+const ragCacheTTL = time.Hour
+
 // RAGService RAG 检索服务
 // 优先使用 pgvector 语义检索,PostgreSQL 不可用时降级到 TF-IDF 关键词检索
+// Redis 可用时启用检索结果缓存,避免重复调 Embedding API
 type RAGService struct {
 	mysqlDB  *gorm.DB          // MySQL(存储文档元数据,必须)
 	pgDB     *gorm.DB          // PostgreSQL + pgvector(可选,用于向量检索)
 	embedder EmbeddingProvider // Embedding 生成器
+	redis    *redis.Client     // Redis 缓存(可选,nil 时跳过缓存)
 }
 
 // NewRAGService 创建 RAG 服务
@@ -30,7 +39,13 @@ func NewRAGService(mysqlDB *gorm.DB, pgDB *gorm.DB, cfg config.LLMConfig) *RAGSe
 		mysqlDB:  mysqlDB,
 		pgDB:     pgDB,
 		embedder: NewEmbeddingProvider(cfg),
+		redis:    nil, // 默认不开缓存,由 SetRedis 注入
 	}
+}
+
+// SetRedis 注入 Redis 客户端以启用检索结果缓存
+func (r *RAGService) SetRedis(client *redis.Client) {
+	r.redis = client
 }
 
 // RAGDocument RAG 检索结果
@@ -43,7 +58,8 @@ type RAGDocument struct {
 }
 
 // Search 检索知识库
-// 优先使用 pgvector 语义检索,降级到 TF-IDF 关键词检索
+// 优先查 Redis 缓存 -> pgvector 语义检索 -> TF-IDF 关键词检索
+// 全程埋点 Prometheus 指标:延迟/分数/降级/缓存命中
 func (r *RAGService) Search(query string, knowledgeBaseID uint, topK int) ([]RAGDocument, error) {
 	if topK <= 0 {
 		topK = 5
@@ -52,18 +68,120 @@ func (r *RAGService) Search(query string, knowledgeBaseID uint, topK int) ([]RAG
 		return []RAGDocument{}, nil
 	}
 
-	// 优先向量检索
+	start := time.Now()
+
+	// 1. 查 Redis 缓存(命中则直接返回,策略标签 cache_hit)
+	if cached, hit := r.getCache(query, knowledgeBaseID, topK); hit {
+		middleware.RAGSearchDuration.WithLabelValues("cache_hit").Observe(time.Since(start).Seconds())
+		middleware.RAGSearchTotal.WithLabelValues("cache_hit", "success").Inc()
+		middleware.RAGCacheHitsTotal.WithLabelValues(fmt.Sprintf("%d", knowledgeBaseID)).Inc()
+		return cached, nil
+	}
+
+	// 2. 优先向量检索
+	strategy := "tfidf"
 	if r.pgDB != nil {
 		docs, err := r.vectorSearch(context.Background(), query, knowledgeBaseID, topK)
 		if err != nil {
+			reason := "query_failed"
+			if strings.Contains(err.Error(), "embed") {
+				reason = "embed_failed"
+			}
+			middleware.RAGFallbackTotal.WithLabelValues(reason).Inc()
 			logger.Get().Warnf("vector search failed, fallback to TF-IDF: %v", err)
 		} else if len(docs) > 0 {
+			strategy = "vector"
+			middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
+			middleware.RAGSearchTotal.WithLabelValues(strategy, "success").Inc()
+			if docs[0].Score > 0 {
+				middleware.RAGSearchScore.WithLabelValues(strategy).Observe(docs[0].Score)
+			}
+			r.setCache(query, knowledgeBaseID, topK, docs)
 			return docs, nil
+		} else {
+			middleware.RAGFallbackTotal.WithLabelValues("no_results").Inc()
 		}
+	} else {
+		middleware.RAGFallbackTotal.WithLabelValues("pg_unavailable").Inc()
 	}
 
-	// 降级:TF-IDF 关键词检索
-	return r.tfidfSearch(query, knowledgeBaseID, topK)
+	// 3. 降级:TF-IDF 关键词检索
+	docs, err := r.tfidfSearch(query, knowledgeBaseID, topK)
+	if err != nil {
+		middleware.RAGSearchTotal.WithLabelValues(strategy, "failed").Inc()
+		middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
+		return nil, err
+	}
+	if len(docs) == 0 {
+		middleware.RAGSearchTotal.WithLabelValues(strategy, "empty").Inc()
+	} else {
+		middleware.RAGSearchTotal.WithLabelValues(strategy, "success").Inc()
+		if docs[0].Score > 0 {
+			middleware.RAGSearchScore.WithLabelValues(strategy).Observe(docs[0].Score)
+		}
+		r.setCache(query, knowledgeBaseID, topK, docs)
+	}
+	middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
+	return docs, nil
+}
+
+// ============== Redis 检索缓存 ==============
+
+// cacheKey 生成 RAG 检索缓存 key
+// 格式: rag:search:{kb_id}:{topk}:{query_hash}
+// query_hash 使用 FNV-1a 64 位,避免长 query 占用 key 长度
+func cacheKey(query string, knowledgeBaseID uint, topK int) string {
+	h := fnv1a64(query)
+	return fmt.Sprintf("rag:search:%d:%d:%x", knowledgeBaseID, topK, h)
+}
+
+// getCache 从 Redis 读取缓存的检索结果
+// 未启用 Redis / 未命中均返回 hit=false
+func (r *RAGService) getCache(query string, knowledgeBaseID uint, topK int) ([]RAGDocument, bool) {
+	if r.redis == nil {
+		return nil, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	val, err := r.redis.Get(ctx, cacheKey(query, knowledgeBaseID, topK)).Bytes()
+	if err != nil {
+		return nil, false
+	}
+	var docs []RAGDocument
+	if err := json.Unmarshal(val, &docs); err != nil {
+		return nil, false
+	}
+	return docs, true
+}
+
+// setCache 将检索结果写入 Redis(失败仅记日志,不影响主流程)
+func (r *RAGService) setCache(query string, knowledgeBaseID uint, topK int, docs []RAGDocument) {
+	if r.redis == nil || len(docs) == 0 {
+		return
+	}
+	data, err := json.Marshal(docs)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if err := r.redis.Set(ctx, cacheKey(query, knowledgeBaseID, topK), data, ragCacheTTL).Err(); err != nil {
+		logger.Get().Warnf("rag cache set failed: %v", err)
+	}
+}
+
+// fnv1a64 FNV-1a 64 位哈希(用于缓存 key,避免引入额外依赖)
+func fnv1a64(s string) uint64 {
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+	h := uint64(offset64)
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= prime64
+	}
+	return h
 }
 
 // SearchAsContext 检索并格式化为 LLM 上下文字符串
@@ -160,6 +278,9 @@ func vectorToPgString(vec []float64) string {
 
 // tfidfSearch 基于关键词的 TF-IDF 检索(PostgreSQL 不可用时使用)
 func (r *RAGService) tfidfSearch(query string, knowledgeBaseID uint, topK int) ([]RAGDocument, error) {
+	if r.mysqlDB == nil {
+		return nil, fmt.Errorf("rag service unavailable: mysql not initialized")
+	}
 	keywords := tokenize(query)
 	if len(keywords) == 0 {
 		return []RAGDocument{}, nil
@@ -339,8 +460,13 @@ func (r *RAGService) IndexDocument(ctx context.Context, doc *models.KnowledgeDoc
 	doc.Status = "ready"
 	doc.ChunkCount = len(chunks)
 	if err := r.mysqlDB.Save(doc).Error; err != nil {
+		middleware.RAGIndexDocsTotal.WithLabelValues("failed").Inc()
 		return fmt.Errorf("update document status: %w", err)
 	}
+
+	// 指标埋点
+	middleware.RAGIndexDocsTotal.WithLabelValues("success").Inc()
+	middleware.RAGIndexChunks.Observe(float64(len(chunks)))
 
 	logger.Get().Infof("RAG indexed doc %d: %d chunks, %d embeddings",
 		doc.ID, len(chunks), len(embeddings))

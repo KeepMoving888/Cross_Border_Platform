@@ -142,6 +142,10 @@ func main() {
 		aiEngine.SetPostgres(pgDB)
 		aiEngine.SetEmbedder(ai.NewEmbeddingProvider(cfg.LLM))
 	}
+	// 注入 Redis(启用 RAG 检索结果缓存,可选)
+	if rdb := database.GetRedisSafe(); rdb != nil {
+		aiEngine.SetRedis(rdb)
+	}
 	scheduler := ai.NewScheduler(mysqlDB, aiEngine)
 	go scheduler.Start()
 	defer scheduler.Stop()

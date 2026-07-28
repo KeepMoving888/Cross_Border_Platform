@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cb-platform/internal/pkg/config"
@@ -274,5 +275,87 @@ func TestSortDocumentsByScore(t *testing.T) {
 	sortDocumentsByScore(docs)
 	if docs[0].Score != 0.8 || docs[1].Score != 0.5 || docs[2].Score != 0.3 {
 		t.Error("documents not sorted by score descending")
+	}
+}
+
+// ============== Redis 缓存 ==============
+
+func TestCacheKey_Deterministic(t *testing.T) {
+	k1 := cacheKey("hello world", 1, 5)
+	k2 := cacheKey("hello world", 1, 5)
+	if k1 != k2 {
+		t.Errorf("cache key not deterministic: %s vs %s", k1, k2)
+	}
+}
+
+func TestCacheKey_DifferentArgs(t *testing.T) {
+	k1 := cacheKey("hello", 1, 5)
+	k2 := cacheKey("world", 1, 5)
+	k3 := cacheKey("hello", 2, 5)
+	k4 := cacheKey("hello", 1, 10)
+	if k1 == k2 || k1 == k3 || k1 == k4 {
+		t.Error("cache key collision for different args")
+	}
+}
+
+func TestCacheKey_Format(t *testing.T) {
+	k := cacheKey("query", 7, 5)
+	if !strings.HasPrefix(k, "rag:search:7:5:") {
+		t.Errorf("cache key format unexpected: %s", k)
+	}
+}
+
+func TestFnv1a64_EmptyString(t *testing.T) {
+	// FNV-1a 64 of empty string is the offset basis
+	if fnv1a64("") != 14695981039346656037 {
+		t.Error("fnv1a64 empty string mismatch")
+	}
+}
+
+func TestFnv1a64_Deterministic(t *testing.T) {
+	if fnv1a64("test") != fnv1a64("test") {
+		t.Error("fnv1a64 not deterministic")
+	}
+	if fnv1a64("test") == fnv1a64("tset") {
+		t.Error("fnv1a64 collision for different input")
+	}
+}
+
+func TestRAGService_GetCache_NoRedis(t *testing.T) {
+	// 无 Redis 时 getCache 应返回 hit=false 且不 panic
+	svc := NewRAGService(nil, nil, config.LLMConfig{})
+	docs, hit := svc.getCache("query", 1, 5)
+	if hit {
+		t.Error("expected cache miss when redis is nil")
+	}
+	if docs != nil {
+		t.Error("expected nil docs when redis is nil")
+	}
+}
+
+func TestRAGService_SetCache_NoRedis(t *testing.T) {
+	// 无 Redis 时 setCache 应不 panic
+	svc := NewRAGService(nil, nil, config.LLMConfig{})
+	svc.setCache("query", 1, 5, []RAGDocument{{Title: "test"}})
+}
+
+func TestRAGService_Search_EmptyQuery(t *testing.T) {
+	svc := NewRAGService(nil, nil, config.LLMConfig{})
+	docs, err := svc.Search("", 1, 5)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(docs) != 0 {
+		t.Error("expected empty result for empty query")
+	}
+}
+
+func TestRAGService_Search_NoDB(t *testing.T) {
+	// 无任何 DB 时 Search 应返回 error 且不 panic
+	// Search 内部降级到 tfidfSearch 时检测到 mysqlDB==nil 应提前返回
+	svc := NewRAGService(nil, nil, config.LLMConfig{})
+	_, err := svc.Search("test query", 1, 5)
+	if err == nil {
+		t.Error("expected error when all DBs are nil")
 	}
 }

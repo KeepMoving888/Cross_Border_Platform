@@ -39,13 +39,13 @@
 - **AI 工作流引擎**：DAG 拓扑执行，支持 input → llm/rag/text2sql/sql_execute/condition → output 节点链路
 - **LLM Provider 抽象**：GLM / Claude / DeepSeek / Qwen / OpenAI 兼容协议，API Key 为空时自动回退 BuiltinLLMProvider（基于场景识别的结构化输出）
 - **Text2SQL**：自然语言 → SQL 生成 → SELECT 安全校验 → 执行 → 业务洞察生成
-- **RAG 检索**：pgvector 向量检索（余弦相似度）+ TF-IDF 降级，支持文档分块+Embedding 入库+语义检索+上下文注入
+- **RAG 检索**：pgvector 向量检索（余弦相似度）+ TF-IDF 降级，支持文档分块+Embedding 入库+语义检索+上下文注入；Redis 检索结果缓存（FNV-1a hash key，TTL 1h，命中跳过 Embedding API 调用）
 - **定时调度器**：后台 goroutine 每分钟扫描启用的工作流，支持 scheduled 触发
-- **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`
+- **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`；RAG 专用 `rag_search_duration_seconds` / `rag_search_score` / `rag_search_total` / `rag_fallback_total` / `rag_cache_hits_total` / `rag_index_docs_total`
 
 ### 前端工程
 
-- **12 个业务页面**：工作台、选品列表、选品详情、采购管理、库存管理、财务管理、AI 工作流、工作流历史、客服消息、工作流编排、平台管理、登录
+- **13 个业务页面**：工作台、选品列表、选品详情、采购管理、库存管理、财务管理、AI 工作流、工作流历史、知识库、客服消息、工作流编排、平台管理、登录
 - **AI 决策卡**：ProductDetail 页点击「AI 深度分析」调用后端工作流，返回评分+推荐结论+理由+风险，本地算法兜底
 - **AI 数据分析**：Dashboard 内嵌自然语言查询框，快捷问题 Tag，结果含 SQL+动态列表格+业务洞察
 - **结构化结果展示**：5 种场景差异化渲染（评分仪表盘/报价对比/客服回复/SQL 结果表/Listing 生成）
@@ -61,6 +61,7 @@
 | 库存管理 | 多仓覆盖（深圳主仓/美西/欧洲/FBA）、安全库存预警、库存变动流水 |
 | 财务管理 | 账单对账、利润报表（每日 SKU 级收入/成本/净利润）、趋势分析 |
 | AI 工作流 | 5 个预置场景、工作流历史记录、趋势图、Token/成本统计 |
+| 知识库 | RAG 向量检索、文档分块+向量化入库、状态轮询、检索测试与相似度可视化 |
 | 客服消息 | 多平台消息聚合、AI 回复建议、意图识别、多语言支持 |
 | 工作流编排 | 可视化拖拽编排、7 种节点类型、JSON 导出/导入 |
 
@@ -105,7 +106,7 @@ cb-platform/
 │   ├── domain/models/      # 领域模型(15+ 实体)
 │   ├── interfaces/http/    # HTTP 接口层(12 个 handler)
 │   └── pkg/                # 基础设施(config/database/middleware/logger/response)
-├── web/                     # 前端(12 个页面)
+├── web/                     # 前端(13 个页面)
 │   └── src/
 │       ├── pages/          # 业务页面
 │       ├── api/            # API 封装

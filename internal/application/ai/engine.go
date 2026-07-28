@@ -11,6 +11,7 @@ import (
 	"github.com/cb-platform/internal/domain/models"
 	"github.com/cb-platform/internal/pkg/config"
 	"github.com/cb-platform/internal/pkg/logger"
+	"github.com/redis/go-redis/v9"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -34,6 +35,7 @@ type WorkflowResult struct {
 type Engine struct {
 	db          *gorm.DB
 	pgDB        *gorm.DB // PostgreSQL + pgvector(可选,用于 RAG 向量检索)
+	redis       *redis.Client // Redis(可选,用于 RAG 检索结果缓存)
 	llmProvider LLMProvider
 	embedder    EmbeddingProvider // Embedding 生成器
 	registry    map[string]NodeFactory
@@ -69,6 +71,11 @@ func NewEngine(db *gorm.DB) *Engine {
 // SetPostgres 设置 PostgreSQL 实例(启用 RAG 向量检索)
 func (e *Engine) SetPostgres(pgDB *gorm.DB) {
 	e.pgDB = pgDB
+}
+
+// SetRedis 设置 Redis 实例(启用 RAG 检索结果缓存)
+func (e *Engine) SetRedis(client *redis.Client) {
+	e.redis = client
 }
 
 // SetEmbedder 设置 Embedding Provider
@@ -118,7 +125,9 @@ func (e *Engine) registerDefaults() {
 		return &LLMNode{def: def, provider: e.llmProvider}, nil
 	}
 	e.registry["rag"] = func(def NodeDefinition) (Node, error) {
-		return &RAGNode{def: def, ragService: NewRAGService(e.db, e.pgDB, config.Get().LLM)}, nil
+		svc := NewRAGService(e.db, e.pgDB, config.Get().LLM)
+		svc.SetRedis(e.redis) // nil 时 RAGService 内部自动跳过缓存
+		return &RAGNode{def: def, ragService: svc}, nil
 	}
 	e.registry["condition"] = func(def NodeDefinition) (Node, error) {
 		return &ConditionNode{def: def}, nil

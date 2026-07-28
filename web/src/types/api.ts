@@ -366,6 +366,50 @@ export interface AIWorkflowRun {
   updated_at: string;
 }
 
+/** 知识库类型(对齐后端 models.KnowledgeBase) */
+export interface KnowledgeBase {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  type: string; // product_manual / purchase_contract / faq / operation_guide
+  embedding_model: string;
+  dimension: number;
+  document_count: number;
+  status: 'enabled' | 'disabled';
+  created_at: string;
+  updated_at: string;
+}
+
+/** 知识文档(对齐后端 models.KnowledgeDocument) */
+export interface KnowledgeDocument {
+  id: number;
+  knowledge_base_id: number;
+  title: string;
+  source: string;
+  content: string;
+  chunk_count: number;
+  status: 'processing' | 'ready' | 'failed';
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** RAG 检索结果文档(对齐后端 ai.RAGDocument) */
+export interface RAGDocument {
+  title: string;
+  content: string;
+  source: string;
+  score: number;
+  chunk_idx: number;
+}
+
+/** RAG 检索响应 */
+export interface RAGSearchResult {
+  documents: RAGDocument[];
+  total: number;
+}
+
 /** 工作台总览(对齐后端 overviewResp) */
 export interface DashboardOverview {
   // 销售 & 利润

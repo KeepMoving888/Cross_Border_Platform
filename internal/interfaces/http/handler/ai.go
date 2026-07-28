@@ -413,6 +413,9 @@ func (h *AIHandler) UploadDocument(c *gin.Context) {
 	// 异步分块 + 向量化入库(不阻塞响应)
 	go func(docID uint) {
 		ragService := ai.NewRAGService(h.db, database.GetPostgres(), config.Get().LLM)
+		if rdb := database.GetRedisSafe(); rdb != nil {
+			ragService.SetRedis(rdb)
+		}
 		var d models.KnowledgeDocument
 		if err := h.db.First(&d, docID).Error; err != nil {
 			logger.Get().Errorf("load document %d failed: %v", docID, err)
@@ -556,6 +559,9 @@ func (h *AIHandler) RAGSearch(c *gin.Context) {
 		req.TopK = 5
 	}
 	ragService := ai.NewRAGService(h.db, database.GetPostgres(), config.Get().LLM)
+	if rdb := database.GetRedisSafe(); rdb != nil {
+		ragService.SetRedis(rdb)
+	}
 	docs, err := ragService.Search(req.Query, req.KnowledgeBaseID, req.TopK)
 	if err != nil {
 		response.Fail(c, errors.Wrap(err, 9003, "RAG 检索失败"))

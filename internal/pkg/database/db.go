@@ -139,6 +139,12 @@ func GetRedis() *redis.Client {
 	return redisClient
 }
 
+// GetRedisSafe 安全获取 Redis 实例(未初始化时返回 nil,不触发 Fatal)
+// 用于可选依赖场景(如 RAG 缓存,Redis 不可用时自动降级为无缓存)
+func GetRedisSafe() *redis.Client {
+	return redisClient
+}
+
 // Close 关闭所有数据库连接
 func Close() {
 	if mysqlDB != nil {

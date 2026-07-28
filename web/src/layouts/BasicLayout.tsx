@@ -13,6 +13,7 @@ import {
   RobotOutlined,
   DeploymentUnitOutlined,
   CloudOutlined,
+  BookOutlined,
   LogoutOutlined,
   UserOutlined,
   BellOutlined,
@@ -56,6 +57,7 @@ const menuRouteMap: Record<string, string> = {
   '/finance': '对账利润',
   '/ai-workflows': 'AI 工作流',
   '/ai-workflow-editor': '工作流编排',
+  '/ai/knowledge-bases': '知识库',
   '/platforms': '平台对接',
 };
 
@@ -87,6 +89,7 @@ const BasicLayout: React.FC = () => {
       { path: '/finance', name: '对账利润', icon: <AccountBookOutlined />, roles: ['admin', 'manager', 'staff'] },
       { path: '/ai-workflows', name: 'AI 工作流', icon: <RobotOutlined /> },
       { path: '/ai-workflow-editor', name: '工作流编排', icon: <DeploymentUnitOutlined /> },
+      { path: '/ai/knowledge-bases', name: '知识库', icon: <BookOutlined /> },
       { path: '/platforms', name: '平台对接', icon: <CloudOutlined />, roles: ['admin', 'manager'] },
     ];
     return all.filter((item) => {

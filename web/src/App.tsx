@@ -13,6 +13,7 @@ import Inventory from '@/pages/Inventory';
 import Finance from '@/pages/Finance';
 import AIWorkflows from '@/pages/AIWorkflows';
 import AIWorkflowRuns from '@/pages/AIWorkflowRuns';
+import KnowledgeBases from '@/pages/KnowledgeBases';
 import WorkflowEditor from '@/pages/WorkflowEditor';
 import Platforms from '@/pages/Platforms';
 import Messages from '@/pages/Messages';
@@ -68,6 +69,7 @@ const App: React.FC = () => {
           <Route path="ai-workflows" element={<AIWorkflows />} />
           <Route path="ai-workflow-editor" element={<WorkflowEditor />} />
           <Route path="/ai/runs" element={<AIWorkflowRuns />} />
+          <Route path="/ai/knowledge-bases" element={<KnowledgeBases />} />
           <Route path="platforms" element={<Platforms />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

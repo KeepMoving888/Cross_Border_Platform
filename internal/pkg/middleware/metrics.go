@@ -67,6 +67,66 @@ var (
 		},
 		[]string{"workflow_code"},
 	)
+
+	// RAG 检索专用指标
+	// 反映向量检索质量、降级频率、延迟与缓存命中率,用于持续调优分块策略与 topK
+	RAGSearchDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "rag_search_duration_seconds",
+			Help:    "RAG search duration in seconds (includes embedding + vector/tfidf query)",
+			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10},
+		},
+		[]string{"strategy"}, // strategy: vector | tfidf | cache_hit
+	)
+
+	RAGSearchScore = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "rag_search_score",
+			Help:    "RAG search top-1 similarity score (0-1, higher is better)",
+			Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95},
+		},
+		[]string{"strategy"}, // strategy: vector | tfidf
+	)
+
+	RAGSearchTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rag_search_total",
+			Help: "Total number of RAG searches, labeled by strategy and status",
+		},
+		[]string{"strategy", "status"}, // strategy: vector|tfidf|cache_hit, status: success|failed|empty
+	)
+
+	RAGFallbackTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rag_fallback_total",
+			Help: "Number of RAG searches that fell back from vector to TF-IDF",
+		},
+		[]string{"reason"}, // reason: pg_unavailable | embed_failed | query_failed | no_results
+	)
+
+	RAGCacheHitsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rag_cache_hits_total",
+			Help: "Number of RAG searches served from Redis cache",
+		},
+		[]string{"knowledge_base_id"},
+	)
+
+	RAGIndexDocsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rag_index_docs_total",
+			Help: "Total number of documents indexed by RAG",
+		},
+		[]string{"status"}, // status: success | failed
+	)
+
+	RAGIndexChunks = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "rag_index_chunks_per_doc",
+			Help:    "Number of chunks generated per indexed document",
+			Buckets: []float64{1, 2, 5, 10, 20, 50, 100, 200},
+		},
+	)
 )
 
 // Metrics Prometheus 指标采集中间件
