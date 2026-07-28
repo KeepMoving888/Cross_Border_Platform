@@ -76,8 +76,8 @@ func NewPgVectorStore(db *gorm.DB) *PgVectorStore {
 	return &PgVectorStore{db: db}
 }
 
-func (s *PgVectorStore) Name() string      { return "pgvector" }
-func (s *PgVectorStore) Available() bool    { return s.db != nil }
+func (s *PgVectorStore) Name() string    { return "pgvector" }
+func (s *PgVectorStore) Available() bool { return s.db != nil }
 
 // UpsertVectors 批量更新 embedding 列
 // chunks 元数据由 RAGService 写入,这里只更新 embedding 列
@@ -211,7 +211,7 @@ func NewInMemoryVectorStore() *InMemoryVectorStore {
 	return &InMemoryVectorStore{}
 }
 
-func (s *InMemoryVectorStore) Name() string   { return "memory" }
+func (s *InMemoryVectorStore) Name() string    { return "memory" }
 func (s *InMemoryVectorStore) Available() bool { return true }
 
 // UpsertVectors 按 DocID 幂等写入(先删后插)

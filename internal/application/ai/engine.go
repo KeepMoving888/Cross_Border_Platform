@@ -34,7 +34,7 @@ type WorkflowResult struct {
 // Engine 工作流执行引擎
 type Engine struct {
 	db          *gorm.DB
-	pgDB        *gorm.DB // PostgreSQL + pgvector(可选,用于 RAG 向量检索)
+	pgDB        *gorm.DB      // PostgreSQL + pgvector(可选,用于 RAG 向量检索)
 	redis       *redis.Client // Redis(可选,用于 RAG 检索结果缓存)
 	llmProvider LLMProvider
 	embedder    EmbeddingProvider // Embedding 生成器

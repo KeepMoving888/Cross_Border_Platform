@@ -288,7 +288,7 @@ func TestRAGService_VectorSearch_NoStore(t *testing.T) {
 // 新增实现(如 MilvusStore)时,将其加入 testCases 即可复用测试
 func TestVectorStoreContract(t *testing.T) {
 	testCases := []struct {
-		name string
+		name  string
 		store VectorStore
 	}{
 		{"InMemory", NewInMemoryVectorStore()},

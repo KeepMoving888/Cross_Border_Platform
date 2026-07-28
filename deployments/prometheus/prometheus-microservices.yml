@@ -1,0 +1,25 @@
+# CB-Platform 微服务版 Prometheus 配置
+# 分别采集 API Gateway / AI Service / RAG Service 的指标
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # API Gateway 指标(业务 HTTP + 认证)
+  - job_name: 'cb-gateway'
+    static_configs:
+      - targets: ['cb-gateway:8080']
+    metrics_path: /metrics
+
+  # AI Service 指标(工作流 + LLM)
+  - job_name: 'cb-ai-service'
+    static_configs:
+      - targets: ['cb-ai-svc:8081']
+    metrics_path: /metrics
+
+  # RAG Service 指标(向量检索 + 文档入库)
+  - job_name: 'cb-rag-service'
+    static_configs:
+      - targets: ['cb-rag-svc:8082']
+    metrics_path: /metrics

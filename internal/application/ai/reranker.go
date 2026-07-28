@@ -194,9 +194,9 @@ func (p *APIRerankerProvider) rerankURL() string {
 // HeuristicRerankerProvider 无 rerank API 时的降级方案
 // 基于 query-doc 关键词覆盖度、命中位置、命中密度进行启发式打分
 // 虽不如 cross-encoder 精确,但相比纯向量召回仍能提升精度:
-//  - 命中 query 全部关键词的文档加分
-//  - 命中位置靠前(标题/首段)的文档加分
-//  - 命中关键词密集的文档加分
+//   - 命中 query 全部关键词的文档加分
+//   - 命中位置靠前(标题/首段)的文档加分
+//   - 命中关键词密集的文档加分
 type HeuristicRerankerProvider struct{}
 
 func (p *HeuristicRerankerProvider) Name() string { return "heuristic-reranker" }

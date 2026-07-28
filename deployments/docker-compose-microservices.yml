@@ -1,0 +1,358 @@
+version: "3.9"
+
+# CB-Platform 微服务部署版
+# 拆分为 3 个服务:API Gateway + AI Service + RAG Service
+# 适用场景:AI 负载重、需要资源隔离和独立扩展
+# 启动:docker compose -f docker-compose-microservices.yml up -d
+
+networks:
+  cb-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  pg-data:
+  prometheus-data:
+  grafana-data:
+  app-logs:
+
+services:
+  # ============== API Gateway(业务 CRUD + 认证 + 请求转发) ==============
+  # IO 密集型,低 CPU,处理业务请求并转发 AI/RAG 请求到对应服务
+  cb-gateway:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: cb-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - APP_ROLE=gateway
+      - APP_PORT=8080
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=cb_platform_jwt_secret_change_in_production
+      - JWT_EXPIRE_HOURS=24
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      # 转发目标(AI/RAG 服务地址)
+      - AI_SERVICE_URL=http://cb-ai-svc:8081
+      - RAG_SERVICE_URL=http://cb-rag-svc:8082
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app-logs:/app/logs
+    networks:
+      - cb-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============== AI Service(AI 工作流 + LLM + 调度器) ==============
+  # CPU 密集型,处理 LLM 调用和工作流执行,独立水平扩展
+  cb-ai-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: cb-ai-svc
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - APP_ENV=production
+      - APP_ROLE=ai
+      - APP_PORT=8081
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=cb
+      - PG_PASSWORD=cb_pass_2026
+      - PG_DB=cb_vector
+      - PG_SSLMODE=disable
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      # LLM 配置
+      - LLM_PROVIDER=glm
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+      - LLM_MODEL=glm-4-plus
+      # RAG Service 地址(工作流 RAG 节点调用)
+      - RAG_SERVICE_URL=http://cb-rag-svc:8082
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app-logs:/app/logs
+    networks:
+      - cb-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============== RAG Service(向量检索 + 文档入库 + Reranker) ==============
+  # 内存密集型,处理 Embedding 和向量检索,可选 Milvus 替代 pgvector
+  cb-rag-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: cb-rag-svc
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - APP_ENV=production
+      - APP_ROLE=rag
+      - APP_PORT=8082
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=cb
+      - PG_PASSWORD=cb_pass_2026
+      - PG_DB=cb_vector
+      - PG_SSLMODE=disable
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      # LLM 配置(Embedding 生成)
+      - LLM_PROVIDER=glm
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+      - LLM_MODEL=glm-4-plus
+      # 向量存储类型:pgvector(默认) / milvus(大规模)
+      - VECTOR_STORE_TYPE=pgvector
+      # Milvus 配置(VECTOR_STORE_TYPE=milvus 时启用)
+      - MILVUS_ADDRESS=http://milvus:19530
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app-logs:/app/logs
+    networks:
+      - cb-net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============== MySQL(业务数据,共享) ==============
+  mysql:
+    image: mysql:8.0
+    container_name: cb-platform-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_pass_2026
+      - MYSQL_DATABASE=cb_platform
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - TZ=Asia/Shanghai
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --max-connections=200
+      --innodb-buffer-pool-size=512M
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "cb", "-pcb_pass_2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============== Redis(缓存,共享) ==============
+  redis:
+    image: redis:7-alpine
+    container_name: cb-platform-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============== PostgreSQL + pgvector(RAG 向量库) ==============
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cb-platform-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=cb_vector
+      - POSTGRES_USER=cb
+      - POSTGRES_PASSWORD=cb_pass_2026
+      - TZ=Asia/Shanghai
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - cb-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cb -d cb_vector"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============== Milvus(可选,大规模向量库 10M+) ==============
+  # 启用方式:docker compose -f docker-compose-microservices.yml --profile milvus up -d
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: cb-platform-milvus
+    restart: unless-stopped
+    profiles: ["milvus"]
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+    command: ["milvus", "run", "standalone"]
+    depends_on:
+      - etcd
+      - minio
+    volumes:
+      - milvus-data:/var/lib/milvus
+    networks:
+      - cb-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: cb-platform-etcd
+    restart: unless-stopped
+    profiles: ["milvus"]
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcd-data:/etcd
+    networks:
+      - cb-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: cb-platform-minio
+    restart: unless-stopped
+    profiles: ["milvus"]
+    environment:
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    command: minio server /minio_data
+    volumes:
+      - minio-data:/minio_data
+    networks:
+      - cb-net
+
+  # ============== Prometheus(指标采集) ==============
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cb-platform-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus-microservices.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - cb-net
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+
+  # ============== Grafana(可视化监控) ==============
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cb-platform-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - cb-net
+    depends_on:
+      - prometheus
+
+volumes:
+  milvus-data:
+  etcd-data:
+  minio-data:
