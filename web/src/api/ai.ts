@@ -116,3 +116,101 @@ export async function ragSearch(payload: {
 }): Promise<RAGSearchResult> {
   return post<RAGSearchResult>('/ai/rag/search', payload);
 }
+
+// ============== RAG 监控(对接 Prometheus HTTP API) ==============
+
+/** Prometheus 查询响应 */
+interface PrometheusResponse {
+  status: string;
+  data: {
+    resultType: string;
+    result: Array<{
+      metric: Record<string, string>;
+      value: [number, string];
+    }>;
+  };
+}
+
+/** RAG 监控指标聚合 */
+export interface RAGMetrics {
+  searchSuccessRate: number;      // 检索成功率 [0,1]
+  searchTotal: number;            // 总检索次数
+  cacheHitRate: number;           // 缓存命中率 [0,1]
+  avgSearchDuration: number;      // 平均检索延迟(秒)
+  fallbackTotal: number;          // 降级次数
+  rerankTotal: number;            // 重排序次数
+  indexedDocs: number;            // 已入库文档数
+  strategyDistribution: Array<{   // 检索策略分布
+    strategy: string;
+    count: number;
+  }>;
+}
+
+const PROMETHEUS_URL = '/prometheus/api/v1/query';
+
+/** 查询 Prometheus 单值指标 */
+async function queryPrometheus(query: string): Promise<number> {
+  try {
+    const resp = await fetch(`${PROMETHEUS_URL}?query=${encodeURIComponent(query)}`);
+    const json: PrometheusResponse = await resp.json();
+    if (json.status === 'success' && json.data.result.length > 0) {
+      return parseFloat(json.data.result[0].value[1]) || 0;
+    }
+  } catch {
+    // Prometheus 不可用时静默
+  }
+  return 0;
+}
+
+/** 查询 Prometheus 多值指标(按 label 分组) */
+async function queryPrometheusByLabel(query: string): Promise<Array<{ label: string; value: number }>> {
+  try {
+    const resp = await fetch(`${PROMETHEUS_URL}?query=${encodeURIComponent(query)}`);
+    const json: PrometheusResponse = await resp.json();
+    if (json.status === 'success') {
+      return json.data.result.map((r) => ({
+        label: r.metric.strategy || r.metric.status || 'unknown',
+        value: parseFloat(r.value[1]) || 0,
+      }));
+    }
+  } catch {
+    // 静默
+  }
+  return [];
+}
+
+/** 获取 RAG 监控指标(并行查询 Prometheus) */
+export async function getRAGMetrics(): Promise<RAGMetrics> {
+  const [
+    successRate,
+    total,
+    cacheHits,
+    cacheTotal,
+    avgDuration,
+    fallback,
+    rerank,
+    indexed,
+    strategyDist,
+  ] = await Promise.all([
+    queryPrometheus('sum(rag_search_total{status="success"}) / sum(rag_search_total)'),
+    queryPrometheus('sum(rag_search_total)'),
+    queryPrometheus('sum(rag_cache_hits_total)'),
+    queryPrometheus('sum(rag_search_total)'),
+    queryPrometheus('avg(rag_search_duration_seconds_sum / rag_search_duration_seconds_count)'),
+    queryPrometheus('sum(rag_fallback_total)'),
+    queryPrometheus('sum(rag_rerank_total)'),
+    queryPrometheus('sum(rag_index_docs_total{status="success"})'),
+    queryPrometheusByLabel('sum(rag_search_total) by (strategy)'),
+  ]);
+
+  return {
+    searchSuccessRate: successRate,
+    searchTotal: total,
+    cacheHitRate: cacheTotal > 0 ? cacheHits / cacheTotal : 0,
+    avgSearchDuration: avgDuration,
+    fallbackTotal: fallback,
+    rerankTotal: rerank,
+    indexedDocs: indexed,
+    strategyDistribution: strategyDist.map((s) => ({ strategy: s.label, count: s.value })),
+  };
+}

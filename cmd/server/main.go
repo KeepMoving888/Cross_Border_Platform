@@ -151,7 +151,9 @@ func main() {
 	defer scheduler.Stop()
 
 	// 启动 HTTP 服务
-	router := http.NewRouter(mysqlDB)
+	// 微服务模式:根据 cfg.Service 启用反向代理转发(AI/RAG 请求转发到下游服务)
+	// 单体模式:cfg.Service 为空,所有路由本地处理
+	router := http.NewRouter(mysqlDB, cfg)
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
 
 	srv := &http.ServerImpl{

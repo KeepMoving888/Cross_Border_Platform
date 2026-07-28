@@ -9,20 +9,30 @@ import (
 
 // Config 全局配置
 type Config struct {
-	App   AppConfig   `mapstructure:"app"`
-	MySQL MySQLConfig `mapstructure:"mysql"`
-	PG    PGConfig    `mapstructure:"pg"`
-	Redis RedisConfig `mapstructure:"redis"`
-	JWT   JWTConfig   `mapstructure:"jwt"`
-	LLM   LLMConfig   `mapstructure:"llm"`
-	Asynq AsynqConfig `mapstructure:"asynq"`
-	Log   LogConfig   `mapstructure:"log"`
+	App     AppConfig     `mapstructure:"app"`
+	MySQL   MySQLConfig   `mapstructure:"mysql"`
+	PG      PGConfig      `mapstructure:"pg"`
+	Redis   RedisConfig   `mapstructure:"redis"`
+	JWT     JWTConfig     `mapstructure:"jwt"`
+	LLM     LLMConfig     `mapstructure:"llm"`
+	Asynq   AsynqConfig   `mapstructure:"asynq"`
+	Log     LogConfig     `mapstructure:"log"`
+	Service ServiceConfig `mapstructure:"service"`
 }
 
 type AppConfig struct {
 	Env  string `mapstructure:"env"`
 	Port int    `mapstructure:"port"`
 	Name string `mapstructure:"name"`
+	Role string `mapstructure:"role"` // 服务角色: gateway(默认) / ai / rag
+}
+
+// ServiceConfig 微服务配置(微服务部署模式下使用)
+// 单体模式下 AIServiceURL/RAGServiceURL 为空,所有请求本地处理
+type ServiceConfig struct {
+	AIServiceURL  string `mapstructure:"ai_service_url"`  // AI Service 地址,如 http://cb-ai-svc:8081
+	RAGServiceURL string `mapstructure:"rag_service_url"` // RAG Service 地址,如 http://cb-rag-svc:8082
+	ProxyTimeout  int    `mapstructure:"proxy_timeout"`   // 反向代理超时(秒),默认 30
 }
 
 type MySQLConfig struct {
@@ -155,6 +165,18 @@ func Load() (*Config, error) {
 
 	c.Log.Level = getOr(v, "LOG_LEVEL", c.Log.Level)
 	c.Log.Dir = getOr(v, "LOG_DIR", c.Log.Dir)
+
+	// 微服务配置(可选,单体模式留空)
+	c.Service.AIServiceURL = getOr(v, "AI_SERVICE_URL", c.Service.AIServiceURL)
+	c.Service.RAGServiceURL = getOr(v, "RAG_SERVICE_URL", c.Service.RAGServiceURL)
+	c.Service.ProxyTimeout = getOrInt(v, "PROXY_TIMEOUT", c.Service.ProxyTimeout)
+	c.App.Role = getOr(v, "APP_ROLE", c.App.Role)
+	if c.App.Role == "" {
+		c.App.Role = "gateway" // 默认网关角色
+	}
+	if c.Service.ProxyTimeout == 0 {
+		c.Service.ProxyTimeout = 30
+	}
 
 	cfg = c
 	return c, nil

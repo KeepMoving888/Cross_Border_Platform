@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/cb-platform/internal/interfaces/http/handler"
+	"github.com/cb-platform/internal/pkg/config"
 	"github.com/cb-platform/internal/pkg/database"
 	"github.com/cb-platform/internal/pkg/logger"
 	"github.com/cb-platform/internal/pkg/middleware"
@@ -44,7 +45,8 @@ func (s *ServerImpl) Stop(ctx context.Context) error {
 }
 
 // NewRouter 创建并配置路由
-func NewRouter(db *gorm.DB) *gin.Engine {
+// cfg: 全局配置,微服务模式下根据 ServiceConfig 启用反向代理转发
+func NewRouter(db *gorm.DB, cfg ...*config.Config) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	if database.GetRedis() == nil {
 		// 没有 Redis 仍可启动
@@ -74,7 +76,18 @@ func NewRouter(db *gorm.DB) *gin.Engine {
 	// Prometheus 指标端点
 	r.GET("/metrics", gin.WrapH(promhttpHandler()))
 
-	// 注册业务路由
+	// 微服务模式:注册反向代理路由(在本地路由之前,优先匹配转发)
+	// 单体模式(cfg 未传入或 ServiceConfig 为空):跳过,所有路由本地处理
+	var proxyMW *ProxyMiddleware
+	if len(cfg) > 0 && cfg[0] != nil {
+		proxyMW = NewProxyMiddleware(cfg[0].Service)
+		if proxyMW.Enabled() {
+			proxyMW.Register(r)
+			logger.Get().Info("microservices mode: proxy enabled")
+		}
+	}
+
+	// 注册业务路由(微服务模式下,被代理覆盖的路由仍会注册但不会触发)
 	registerRoutes(r, db)
 
 	// 404

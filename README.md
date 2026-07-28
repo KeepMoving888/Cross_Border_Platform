@@ -28,10 +28,23 @@
 │  │ REST API │ │ AI 引擎  │ │ Prometheus 指标     │ │
 │  │ 8 模块   │ │ 7 节点   │ │ 4 项 AI 专用指标    │ │
 │  └──────────┘ └──────────┘ └─────────────────────┘ │
+│  ┌──────────────────────────────────────────────┐  │
+│  │ 微服务部署:API Gateway + AI Service + RAG    │  │
+│  │ 反向代理透明转发 · 单体/微服务自由切换       │  │
+│  └──────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │  MySQL │ Redis │ PostgreSQL(pgvector) │ Milvus     │
 └─────────────────────────────────────────────────────┘
 ```
+
+### 部署模式
+
+| 模式 | 适用场景 | 启动命令 | 说明 |
+|---|---|---|---|
+| 单体 | 开发 / 小规模 | `docker compose up -d` | 单进程,所有路由本地处理 |
+| 微服务 | AI 负载重 / 需资源隔离 | `docker compose -f docker-compose-microservices.yml up -d` | 3 服务拆分:Gateway(8080) + AI(8081) + RAG(8082) |
+
+微服务版通过环境变量 `AI_SERVICE_URL` / `RAG_SERVICE_URL` 启用反向代理,未配置时自动降级为单体模式。详见 [docs/microservices.md](docs/microservices.md)。
 
 ### 后端工程
 
@@ -43,6 +56,8 @@
 - **VectorStore 抽象层**：`VectorStore` 接口解耦 RAGService 与向量存储实现，3 种可插拔实现：`PgVectorStore`（生产，批量 UPDATE...FROM VALUES 优化）、`MilvusStore`（REST API，10M+ 大规模向量，IVF/HNSW 索引）、`InMemoryVectorStore`（测试/本地开发，暴力余弦相似度）；`NewVectorStore` 工厂函数按配置自动选择
 - **批量入库**：`BatchIndexDocuments` 跨文档批量入库，合并所有 chunks 一次性调用 Embedding API + 单次 UpsertVectors 批量写入，显著降低 API 调用次数和 RTT
 - **微服务部署**：支持单体（`docker-compose.yml`）和微服务（`docker-compose-microservices.yml`）两种部署模式，微服务版拆分 API Gateway + AI Service + RAG Service 3 个服务，实现资源隔离和独立扩展
+- **API Gateway 反向代理**：`ProxyMiddleware` 基于 `httputil.ReverseProxy` 实现 8 条转发规则，按子路径精确匹配 AI/RAG 服务，JWT 透明转发，单体/微服务模式配置驱动切换
+- **RAG 监控仪表盘**：前端对接 Prometheus HTTP API，实时展示检索成功率/缓存命中率/平均延迟/策略分布，阈值变色预警
 - **RAG 多模态**：支持 PDF / Word(.docx) / Markdown / TXT 文件上传，自动解析为纯文本后分块入库（DocxParser 解析 XML、PDFParser 提取文本流）
 - **定时调度器**：后台 goroutine 每分钟扫描启用的工作流，支持 scheduled 触发
 - **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`；RAG 专用 `rag_search_duration_seconds` / `rag_search_score` / `rag_search_total` / `rag_fallback_total` / `rag_cache_hits_total` / `rag_rerank_duration_seconds` / `rag_rerank_total` / `rag_index_docs_total`

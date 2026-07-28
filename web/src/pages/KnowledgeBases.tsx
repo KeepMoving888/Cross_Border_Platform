@@ -63,7 +63,9 @@ import {
   uploadDocument,
   uploadDocumentFile,
   ragSearch,
+  getRAGMetrics,
 } from '@/api/ai';
+import type { RAGMetrics } from '@/api/ai';
 import { formatDateTime } from '@/utils/format';
 import type { KnowledgeBase, KnowledgeDocument, RAGDocument } from '@/types/api';
 
@@ -127,7 +129,11 @@ const KnowledgeBases: React.FC = () => {
   const [searchResults, setSearchResults] = useState<RAGDocument[]>([]);
 
   // 当前激活 Tab
-  const [activeTab, setActiveTab] = useState<'documents' | 'search'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'search' | 'monitor'>('documents');
+
+  // RAG 监控指标
+  const [ragMetrics, setRagMetrics] = useState<RAGMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   // ============== 数据加载 ==============
 
@@ -286,6 +292,27 @@ const KnowledgeBases: React.FC = () => {
       setSearching(false);
     }
   };
+
+  // ============== RAG 监控 ==============
+
+  const refreshMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    try {
+      const m = await getRAGMetrics();
+      setRagMetrics(m);
+    } catch {
+      // Prometheus 不可用时静默
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, []);
+
+  // 切换到监控 Tab 时自动加载
+  useEffect(() => {
+    if (activeTab === 'monitor') {
+      refreshMetrics();
+    }
+  }, [activeTab, refreshMetrics]);
 
   // ============== 渲染辅助 ==============
 
@@ -494,10 +521,11 @@ const KnowledgeBases: React.FC = () => {
               tabList={[
                 { key: 'documents', tab: '文档管理' },
                 { key: 'search', tab: '检索测试' },
+                { key: 'monitor', tab: 'RAG 监控' },
               ]}
               tabProps={{ size: 'middle' }}
               activeTabKey={activeTab}
-              onTabChange={(k) => setActiveTab(k as 'documents' | 'search')}
+              onTabChange={(k) => setActiveTab(k as 'documents' | 'search' | 'monitor')}
             >
               {/* 知识库元信息 */}
               <Descriptions size="small" column={3} style={{ marginBottom: 16 }}>
@@ -663,6 +691,160 @@ const KnowledgeBases: React.FC = () => {
                     </div>
                   )}
                 </div>
+              )}
+
+              {activeTab === 'monitor' && (
+                <Spin spinning={metricsLoading}>
+                  <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                    <Alert
+                      message="RAG 检索质量监控"
+                      description="对接 Prometheus 实时指标,反映向量检索的健康状况。成功率 > 95% 为健康,缓存命中率 > 30% 为良好。"
+                      type="info"
+                      showIcon
+                      style={{ flex: 1, marginRight: 16 }}
+                    />
+                    <Button icon={<ReloadOutlined />} onClick={refreshMetrics}>
+                      刷新指标
+                    </Button>
+                  </div>
+
+                  {ragMetrics ? (
+                    <div>
+                      <Row gutter={16} style={{ marginBottom: 16 }}>
+                        <Col xs={12} md={6}>
+                          <Card size="small">
+                            <Statistic
+                              title="检索成功率"
+                              value={(ragMetrics.searchSuccessRate * 100).toFixed(1)}
+                              suffix="%"
+                              valueStyle={{
+                                color: ragMetrics.searchSuccessRate >= 0.95 ? '#52c41a' : ragMetrics.searchSuccessRate >= 0.8 ? '#faad14' : '#ff4d4f',
+                                fontSize: 28,
+                                fontWeight: 600,
+                              }}
+                              prefix={<CheckCircleFilled style={{ fontSize: 20 }} />}
+                            />
+                          </Card>
+                        </Col>
+                        <Col xs={12} md={6}>
+                          <Card size="small">
+                            <Statistic
+                              title="缓存命中率"
+                              value={(ragMetrics.cacheHitRate * 100).toFixed(1)}
+                              suffix="%"
+                              valueStyle={{
+                                color: ragMetrics.cacheHitRate >= 0.3 ? '#52c41a' : '#faad14',
+                                fontSize: 28,
+                                fontWeight: 600,
+                              }}
+                              prefix={<ThunderboltOutlined style={{ fontSize: 20 }} />}
+                            />
+                          </Card>
+                        </Col>
+                        <Col xs={12} md={6}>
+                          <Card size="small">
+                            <Statistic
+                              title="平均检索延迟"
+                              value={ragMetrics.avgSearchDuration.toFixed(3)}
+                              suffix="s"
+                              valueStyle={{
+                                color: ragMetrics.avgSearchDuration < 0.5 ? '#52c41a' : ragMetrics.avgSearchDuration < 2 ? '#faad14' : '#ff4d4f',
+                                fontSize: 28,
+                                fontWeight: 600,
+                              }}
+                            />
+                          </Card>
+                        </Col>
+                        <Col xs={12} md={6}>
+                          <Card size="small">
+                            <Statistic
+                              title="总检索次数"
+                              value={ragMetrics.searchTotal}
+                              valueStyle={{ fontSize: 28, fontWeight: 600 }}
+                              prefix={<SearchOutlined style={{ fontSize: 20 }} />}
+                            />
+                          </Card>
+                        </Col>
+                      </Row>
+
+                      <Row gutter={16} style={{ marginBottom: 16 }}>
+                        <Col xs={12} md={8}>
+                          <Card size="small">
+                            <Statistic
+                              title="降级次数"
+                              value={ragMetrics.fallbackTotal}
+                              valueStyle={{
+                                color: ragMetrics.fallbackTotal === 0 ? '#52c41a' : '#faad14',
+                                fontSize: 22,
+                              }}
+                            />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              向量检索不可用时降级到 TF-IDF
+                            </Text>
+                          </Card>
+                        </Col>
+                        <Col xs={12} md={8}>
+                          <Card size="small">
+                            <Statistic
+                              title="重排序次数"
+                              value={ragMetrics.rerankTotal}
+                              valueStyle={{ fontSize: 22 }}
+                              prefix={<ThunderboltOutlined />}
+                            />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              Cross-encoder API + 启发式降级
+                            </Text>
+                          </Card>
+                        </Col>
+                        <Col xs={12} md={8}>
+                          <Card size="small">
+                            <Statistic
+                              title="已入库文档"
+                              value={ragMetrics.indexedDocs}
+                              valueStyle={{ fontSize: 22 }}
+                              prefix={<FileTextOutlined />}
+                            />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              成功分块向量化的文档总数
+                            </Text>
+                          </Card>
+                        </Col>
+                      </Row>
+
+                      {ragMetrics.strategyDistribution.length > 0 && (
+                        <Card size="small" title="检索策略分布">
+                          <Space wrap>
+                            {ragMetrics.strategyDistribution.map((s) => (
+                              <Tag
+                                key={s.strategy}
+                                color={
+                                  s.strategy === 'hybrid' ? 'green' :
+                                  s.strategy === 'vector' ? 'blue' :
+                                  s.strategy === 'bm25' ? 'cyan' :
+                                  s.strategy === 'tfidf' ? 'orange' :
+                                  s.strategy === 'cache_hit' ? 'purple' : 'default'
+                                }
+                                style={{ fontSize: 14, padding: '4px 12px' }}
+                              >
+                                {s.strategy}: {Math.round(s.count)} 次
+                              </Tag>
+                            ))}
+                          </Space>
+                          <Divider style={{ margin: '12px 0' }} />
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            hybrid=向量+BM25混合检索 · vector=纯向量 · bm25=全文检索 · tfidf=降级 · cache_hit=缓存命中
+                          </Text>
+                        </Card>
+                      )}
+                    </div>
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="暂无监控数据,请确保 Prometheus 已启动并采集到 RAG 指标"
+                      style={{ padding: '40px 0' }}
+                    />
+                  )}
+                </Spin>
               )}
             </Card>
           )}
