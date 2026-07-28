@@ -207,9 +207,9 @@ func registerRoutes(r *gin.Engine, db *gorm.DB) {
 				finance.GET("/bills", h.ListBills)
 				finance.GET("/bills/:id", h.GetBill)
 				finance.POST("/bills", middleware.RequireRole("admin", "staff"), h.CreateBill)
-			finance.POST("/bills/auto-match", middleware.RequireRole("admin", "staff"), h.AutoMatch)
-			finance.PUT("/bills/:id", middleware.RequireRole("admin", "staff"), h.UpdateBill)
-			finance.POST("/bills/:id/match", middleware.RequireRole("admin", "staff"), h.MatchBill)
+				finance.POST("/bills/auto-match", middleware.RequireRole("admin", "staff"), h.AutoMatch)
+				finance.PUT("/bills/:id", middleware.RequireRole("admin", "staff"), h.UpdateBill)
+				finance.POST("/bills/:id/match", middleware.RequireRole("admin", "staff"), h.MatchBill)
 				finance.POST("/bills/:id/pay", middleware.RequireRole("admin", "staff"), h.PayBill)
 				finance.GET("/bills/:id/items", h.ListBillItems)
 				finance.GET("/profit/summary", h.ProfitSummary)
@@ -237,24 +237,24 @@ func registerRoutes(r *gin.Engine, db *gorm.DB) {
 				ai.POST("/knowledge-bases/:id/documents", middleware.RequireRole("admin", "manager"), h.UploadDocument)
 				ai.GET("/knowledge-bases/:id/documents", h.ListDocuments)
 				ai.POST("/analyze/product", h.AnalyzeProduct)
-			ai.POST("/generate/listing", h.GenerateListing)
-			ai.POST("/reply/customer", h.ReplyCustomer)
-			ai.POST("/rag/search", h.RAGSearch)
+				ai.POST("/generate/listing", h.GenerateListing)
+				ai.POST("/reply/customer", h.ReplyCustomer)
+				ai.POST("/rag/search", h.RAGSearch)
 			}
 
 			// 数据看板
-		dashboard := authRequired.Group("/dashboard")
-		{
-			h := handler.NewDashboardHandler(db)
-			dashboard.GET("/overview", h.Overview)               // 总览
-			dashboard.GET("/sales-trend", h.SalesTrend)          // 近 N 天销售趋势
-			dashboard.GET("/category-share", h.CategoryShare)    // 品类销售占比
-			dashboard.GET("/product/stats", h.ProductStats)      // 选品统计
-			dashboard.GET("/purchase/stats", h.PurchaseStats)    // 采购统计
-			dashboard.GET("/inventory/stats", h.InventoryStats) // 库存统计
-			dashboard.GET("/profit/stats", h.ProfitStats)        // 利润统计
-			dashboard.GET("/ai/stats", h.AIStats)                // AI 使用统计
-		}
+			dashboard := authRequired.Group("/dashboard")
+			{
+				h := handler.NewDashboardHandler(db)
+				dashboard.GET("/overview", h.Overview)              // 总览
+				dashboard.GET("/sales-trend", h.SalesTrend)         // 近 N 天销售趋势
+				dashboard.GET("/category-share", h.CategoryShare)   // 品类销售占比
+				dashboard.GET("/product/stats", h.ProductStats)     // 选品统计
+				dashboard.GET("/purchase/stats", h.PurchaseStats)   // 采购统计
+				dashboard.GET("/inventory/stats", h.InventoryStats) // 库存统计
+				dashboard.GET("/profit/stats", h.ProfitStats)       // 利润统计
+				dashboard.GET("/ai/stats", h.AIStats)               // AI 使用统计
+			}
 
 			// 平台对接
 			platform := authRequired.Group("/platform")

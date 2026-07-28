@@ -94,7 +94,6 @@ func Recovery() gin.HandlerFunc {
 					"error", err,
 					"path", c.Request.URL.Path,
 				)
-				response.AbortFail(c, nil)
 				c.AbortWithStatusJSON(500, response.Response{
 					Code:    9001,
 					Message: "系统内部错误",
@@ -111,6 +110,10 @@ func RateLimiter(rps int) gin.HandlerFunc {
 	// 简化实现:生产环境应使用 Redis 分布式限流
 	// 这里使用 token bucket,每请求消耗一个令牌
 	bucket := make(chan struct{}, rps)
+	// 预填充令牌,确保首个请求不被拒绝
+	for i := 0; i < rps; i++ {
+		bucket <- struct{}{}
+	}
 	go func() {
 		ticker := time.NewTicker(time.Second / time.Duration(rps))
 		defer ticker.Stop()

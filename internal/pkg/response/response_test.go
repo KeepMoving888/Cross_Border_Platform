@@ -146,10 +146,8 @@ func TestAbortFail(t *testing.T) {
 	r := setupRouter()
 	r.GET("/test", func(c *gin.Context) {
 		AbortFail(c, errors.ErrForbidden)
-		// 后续逻辑不应执行
-		c.JSON(http.StatusOK, Response{Code: 0, Message: "should not see"})
 	}, func(c *gin.Context) {
-		// 中间件,不应执行
+		// 中间件,不应执行(被 Abort 阻止)
 		c.JSON(http.StatusOK, Response{Code: 0, Message: "should not see"})
 	})
 

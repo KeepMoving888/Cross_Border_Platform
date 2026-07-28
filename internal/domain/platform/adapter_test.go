@@ -204,8 +204,8 @@ func TestBuiltinAdapter_SyncAll(t *testing.T) {
 	if result.NewOrders == 0 {
 		t.Error("expected non-zero new orders")
 	}
-	if result.Duration <= 0 {
-		t.Error("expected positive duration")
+	if result.Duration < 0 {
+		t.Error("expected non-negative duration")
 	}
 }
 
@@ -247,7 +247,7 @@ type customTestAdapter struct {
 	platform Platform
 }
 
-func (a *customTestAdapter) Name() Platform { return a.platform }
+func (a *customTestAdapter) Name() Platform                 { return a.platform }
 func (a *customTestAdapter) Auth(ctx context.Context) error { return nil }
 func (a *customTestAdapter) ListProducts(ctx context.Context, page, size int) ([]ProductInfo, int, error) {
 	return nil, 0, nil

@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	mysqlDB *gorm.DB
-	pgDB    *gorm.DB
+	mysqlDB     *gorm.DB
+	pgDB        *gorm.DB
 	redisClient *redis.Client
 )
 

@@ -3,11 +3,11 @@ package handler
 import (
 	"strconv"
 
+	"github.com/cb-platform/internal/application/ai"
 	"github.com/cb-platform/internal/domain/models"
 	"github.com/cb-platform/internal/pkg/errors"
 	"github.com/cb-platform/internal/pkg/middleware"
 	"github.com/cb-platform/internal/pkg/response"
-	"github.com/cb-platform/internal/application/ai"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -23,12 +23,12 @@ func NewProductHandler(db *gorm.DB) *ProductHandler {
 
 type listProductQuery struct {
 	Pagination
-	Keyword   string `form:"keyword"`
-	Category  string `form:"category"`
-	Stage     string `form:"stage"`
-	Platform  string `form:"platform"`
-	MinScore  string `form:"min_score"`
-	OwnerID   string `form:"owner_id"`
+	Keyword  string `form:"keyword"`
+	Category string `form:"category"`
+	Stage    string `form:"stage"`
+	Platform string `form:"platform"`
+	MinScore string `form:"min_score"`
+	OwnerID  string `form:"owner_id"`
 }
 
 // List 选品列表
@@ -124,26 +124,26 @@ func (h *ProductHandler) Create(c *gin.Context) {
 
 	userID, _ := strconv.Atoi(middleware.GetUserID(c))
 	p := models.Product{
-		SKU:          req.SKU,
-		ASIN:         req.ASIN,
-		Name:         req.Name,
-		ImageURL:     req.ImageURL,
-		Category:     req.Category,
-		SubCategory:  req.SubCategory,
-		Stage:        req.Stage,
-		Platform:     req.Platform,
-		TargetMarket: req.TargetMarket,
-		ListPrice:    req.ListPrice,
-		EstCostPrice: req.EstCostPrice,
-		Currency:     req.Currency,
-		MonthlySales: req.MonthlySales,
-		ReviewCount:  req.ReviewCount,
-		Rating:       req.Rating,
-		Tags:         req.Tags,
-		Remark:       req.Remark,
-		SupplierID:   req.SupplierID,
-		OwnerID:      uint(userID),
-		AIScore:      decimal.Zero,
+		SKU:           req.SKU,
+		ASIN:          req.ASIN,
+		Name:          req.Name,
+		ImageURL:      req.ImageURL,
+		Category:      req.Category,
+		SubCategory:   req.SubCategory,
+		Stage:         req.Stage,
+		Platform:      req.Platform,
+		TargetMarket:  req.TargetMarket,
+		ListPrice:     req.ListPrice,
+		EstCostPrice:  req.EstCostPrice,
+		Currency:      req.Currency,
+		MonthlySales:  req.MonthlySales,
+		ReviewCount:   req.ReviewCount,
+		Rating:        req.Rating,
+		Tags:          req.Tags,
+		Remark:        req.Remark,
+		SupplierID:    req.SupplierID,
+		OwnerID:       uint(userID),
+		AIScore:       decimal.Zero,
 		EstMarginRate: decimal.Zero,
 	}
 	if p.Stage == "" {
@@ -196,21 +196,21 @@ func (h *ProductHandler) Update(c *gin.Context) {
 	}
 
 	updates := map[string]interface{}{
-		"name":          req.Name,
-		"image_url":     req.ImageURL,
-		"category":      req.Category,
-		"sub_category":  req.SubCategory,
-		"platform":      req.Platform,
-		"target_market": req.TargetMarket,
-		"list_price":    req.ListPrice,
+		"name":           req.Name,
+		"image_url":      req.ImageURL,
+		"category":       req.Category,
+		"sub_category":   req.SubCategory,
+		"platform":       req.Platform,
+		"target_market":  req.TargetMarket,
+		"list_price":     req.ListPrice,
 		"est_cost_price": req.EstCostPrice,
-		"currency":      req.Currency,
-		"monthly_sales": req.MonthlySales,
-		"review_count":  req.ReviewCount,
-		"rating":        req.Rating,
-		"tags":          req.Tags,
-		"remark":        req.Remark,
-		"supplier_id":   req.SupplierID,
+		"currency":       req.Currency,
+		"monthly_sales":  req.MonthlySales,
+		"review_count":   req.ReviewCount,
+		"rating":         req.Rating,
+		"tags":           req.Tags,
+		"remark":         req.Remark,
+		"supplier_id":    req.SupplierID,
 	}
 
 	// 重算毛利率
@@ -242,8 +242,8 @@ func (h *ProductHandler) Delete(c *gin.Context) {
 }
 
 type changeStageRequest struct {
-	Stage   string `json:"stage" binding:"required,oneof=sourcing testing approved rejected archived"`
-	Remark  string `json:"remark"`
+	Stage  string `json:"stage" binding:"required,oneof=sourcing testing approved rejected archived"`
+	Remark string `json:"remark"`
 }
 
 // ChangeStage 变更选品阶段
@@ -293,11 +293,11 @@ func (h *ProductHandler) Analyze(c *gin.Context) {
 	// 调用 AI 工作流
 	engine := ai.GetEngine(h.db)
 	result, err := engine.RunWorkflowByCode(c, "wf_product_analysis", map[string]interface{}{
-		"category":   p.Category,
-		"market":     p.TargetMarket,
-		"product":    p.Name,
-		"price":      p.ListPrice.String(),
-		"sku":        p.SKU,
+		"category": p.Category,
+		"market":   p.TargetMarket,
+		"product":  p.Name,
+		"price":    p.ListPrice.String(),
+		"sku":      p.SKU,
 	}, uint(0))
 	if err != nil {
 		response.Fail(c, errors.Wrap(err, 9004, "AI 分析失败"))
@@ -317,7 +317,7 @@ func (h *ProductHandler) Analyze(c *gin.Context) {
 	})
 
 	response.OKWithMsg(c, "AI 分析完成", gin.H{
-		"product": p,
+		"product":  p,
 		"analysis": result,
 	})
 }

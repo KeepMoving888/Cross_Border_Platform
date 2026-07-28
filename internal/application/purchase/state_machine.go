@@ -12,17 +12,17 @@ import (
 
 // 状态机事件
 const (
-	EventInquire      = "inquire"       // 询价
-	EventQuote        = "quote"         // 报价
-	EventSelectQuote  = "select_quote"  // 选定报价
-	EventOrder        = "order"         // 下单
-	EventShip         = "ship"          // 发货
-	EventReceive      = "receive"       // 入库
-	EventQC           = "qc"            // 质检
-	EventReconcile    = "reconcile"     // 对账
-	EventSettle       = "settle"        // 结算
-	EventCancel       = "cancel"        // 取消
-	EventReopen       = "reopen"        // 重新开启(从已取消恢复到询价)
+	EventInquire     = "inquire"      // 询价
+	EventQuote       = "quote"        // 报价
+	EventSelectQuote = "select_quote" // 选定报价
+	EventOrder       = "order"        // 下单
+	EventShip        = "ship"         // 发货
+	EventReceive     = "receive"      // 入库
+	EventQC          = "qc"           // 质检
+	EventReconcile   = "reconcile"    // 对账
+	EventSettle      = "settle"       // 结算
+	EventCancel      = "cancel"       // 取消
+	EventReopen      = "reopen"       // 重新开启(从已取消恢复到询价)
 )
 
 // 状态转换规则(描述业务流程的合法路径)
@@ -46,9 +46,9 @@ type StateMachine struct {
 }
 
 var (
-	fsmOnce     sync.Once
-	sharedFSM   *fsm.FSM
-	callbacks   = fsm.Callbacks{}
+	fsmOnce   sync.Once
+	sharedFSM *fsm.FSM
+	callbacks = fsm.Callbacks{}
 )
 
 // NewStateMachine 创建订单状态机
@@ -121,7 +121,7 @@ func AllEvents() []string {
 // AllStates 所有状态列表
 func AllStates() []string {
 	states := map[string]bool{
-		models.PurchaseStatusInquiry:    true,
+		models.PurchaseStatusInquiry:     true,
 		models.PurchaseStatusQuoting:     true,
 		models.PurchaseStatusOrdered:     true,
 		models.PurchaseStatusTracking:    true,
@@ -142,7 +142,7 @@ func AllStates() []string {
 // StatusLabel 状态中文标签
 func StatusLabel(status string) string {
 	labels := map[string]string{
-		models.PurchaseStatusInquiry:    "询价中",
+		models.PurchaseStatusInquiry:     "询价中",
 		models.PurchaseStatusQuoting:     "比价中",
 		models.PurchaseStatusOrdered:     "已下单",
 		models.PurchaseStatusTracking:    "跟单中",

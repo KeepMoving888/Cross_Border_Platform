@@ -145,11 +145,11 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 }
 
 type updateUserRequest struct {
-	RealName   string         `json:"real_name"`
-	Email      string         `json:"email"`
-	Phone      string         `json:"phone"`
-	Role       string         `json:"role"`
-	Department string         `json:"department"`
+	RealName   string              `json:"real_name"`
+	Email      string              `json:"email"`
+	Phone      string              `json:"phone"`
+	Role       string              `json:"role"`
+	Department string              `json:"department"`
 	Status     models.CommonStatus `json:"status"`
 }
 

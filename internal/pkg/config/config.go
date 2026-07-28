@@ -9,14 +9,14 @@ import (
 
 // Config 全局配置
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	MySQL    MySQLConfig    `mapstructure:"mysql"`
-	PG       PGConfig       `mapstructure:"pg"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	LLM      LLMConfig      `mapstructure:"llm"`
-	Asynq    AsynqConfig    `mapstructure:"asynq"`
-	Log      LogConfig      `mapstructure:"log"`
+	App   AppConfig   `mapstructure:"app"`
+	MySQL MySQLConfig `mapstructure:"mysql"`
+	PG    PGConfig    `mapstructure:"pg"`
+	Redis RedisConfig `mapstructure:"redis"`
+	JWT   JWTConfig   `mapstructure:"jwt"`
+	LLM   LLMConfig   `mapstructure:"llm"`
+	Asynq AsynqConfig `mapstructure:"asynq"`
+	Log   LogConfig   `mapstructure:"log"`
 }
 
 type AppConfig struct {
@@ -64,8 +64,8 @@ func (c RedisConfig) Addr() string {
 }
 
 type JWTConfig struct {
-	Secret       string `mapstructure:"secret"`
-	ExpireHours  int    `mapstructure:"expire_hours"`
+	Secret      string `mapstructure:"secret"`
+	ExpireHours int    `mapstructure:"expire_hours"`
 }
 
 type LLMConfig struct {

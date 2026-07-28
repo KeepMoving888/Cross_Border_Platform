@@ -17,17 +17,17 @@ import (
 
 // WorkflowResult 工作流执行结果(对齐前端 AIWorkflowRunResult)
 type WorkflowResult struct {
-	WorkflowID  uint                   `json:"workflow_id"`
-	WorkflowCode string                `json:"workflow_code,omitempty"`
-	RunID       string                 `json:"run_id"`
-	Status      string                 `json:"status"` // success / failed / partial
-	Output      string                 `json:"output"`
-	Metrics     map[string]interface{} `json:"metrics,omitempty"`
-	Extra       map[string]interface{} `json:"extra,omitempty"`
-	Tokens      int                    `json:"tokens"`
-	Cost        decimal.Decimal        `json:"cost"`
-	Duration    int64                  `json:"duration_ms"`
-	FinishedAt  string                 `json:"finished_at"`
+	WorkflowID   uint                   `json:"workflow_id"`
+	WorkflowCode string                 `json:"workflow_code,omitempty"`
+	RunID        string                 `json:"run_id"`
+	Status       string                 `json:"status"` // success / failed / partial
+	Output       string                 `json:"output"`
+	Metrics      map[string]interface{} `json:"metrics,omitempty"`
+	Extra        map[string]interface{} `json:"extra,omitempty"`
+	Tokens       int                    `json:"tokens"`
+	Cost         decimal.Decimal        `json:"cost"`
+	Duration     int64                  `json:"duration_ms"`
+	FinishedAt   string                 `json:"finished_at"`
 }
 
 // Engine 工作流执行引擎
@@ -69,10 +69,10 @@ type NodeFactory func(def NodeDefinition) (Node, error)
 
 // NodeDefinition 节点定义
 type NodeDefinition struct {
-	ID       string                 `json:"id"`
-	Type     string                 `json:"type"`
-	Name     string                 `json:"name"`
-	Config   map[string]interface{} `json:"config"`
+	ID     string                 `json:"id"`
+	Type   string                 `json:"type"`
+	Name   string                 `json:"name"`
+	Config map[string]interface{} `json:"config"`
 }
 
 // Node 节点接口
@@ -89,8 +89,8 @@ type WorkflowDefinition struct {
 
 // Edge 边定义
 type Edge struct {
-	From     string `json:"from"`
-	To       string `json:"to"`
+	From      string `json:"from"`
+	To        string `json:"to"`
 	Condition string `json:"condition,omitempty"`
 }
 
@@ -219,17 +219,17 @@ func (e *Engine) executeWorkflow(ctx context.Context, wf *models.AIWorkflow, inp
 	if execErr != nil {
 		e.failRun(run, execErr, start)
 		return &WorkflowResult{
-			WorkflowID:  wf.ID,
+			WorkflowID:   wf.ID,
 			WorkflowCode: wf.Code,
-			RunID:       fmt.Sprintf("%d", run.ID),
-			Status:      "failed",
-			Output:      fmt.Sprintf("error: %v", execErr),
-			Metrics:     buildMetrics(extra, tokens, cost),
-			Extra:       extra,
-			Tokens:      tokens,
-			Cost:        cost,
-			Duration:    run.Duration,
-			FinishedAt:  end.Format(time.RFC3339),
+			RunID:        fmt.Sprintf("%d", run.ID),
+			Status:       "failed",
+			Output:       fmt.Sprintf("error: %v", execErr),
+			Metrics:      buildMetrics(extra, tokens, cost),
+			Extra:        extra,
+			Tokens:       tokens,
+			Cost:         cost,
+			Duration:     run.Duration,
+			FinishedAt:   end.Format(time.RFC3339),
 		}, execErr
 	}
 
@@ -247,17 +247,17 @@ func (e *Engine) executeWorkflow(ctx context.Context, wf *models.AIWorkflow, inp
 	})
 
 	return &WorkflowResult{
-		WorkflowID:  wf.ID,
+		WorkflowID:   wf.ID,
 		WorkflowCode: wf.Code,
-		RunID:       fmt.Sprintf("%d", run.ID),
-		Status:      "success",
-		Output:      toJSONString(output),
-		Metrics:     buildMetrics(extra, tokens, cost),
-		Extra:       extra,
-		Tokens:      tokens,
-		Cost:        cost,
-		Duration:    run.Duration,
-		FinishedAt:  end.Format(time.RFC3339),
+		RunID:        fmt.Sprintf("%d", run.ID),
+		Status:       "success",
+		Output:       toJSONString(output),
+		Metrics:      buildMetrics(extra, tokens, cost),
+		Extra:        extra,
+		Tokens:       tokens,
+		Cost:         cost,
+		Duration:     run.Duration,
+		FinishedAt:   end.Format(time.RFC3339),
 	}, nil
 }
 

@@ -341,12 +341,12 @@ func (h *InventoryHandler) ListWarehouses(c *gin.Context) {
 }
 
 type createWarehouseRequest struct {
-	Code     string `json:"code" binding:"required,max=64"`
-	Name     string `json:"name" binding:"required,max=128"`
-	Type     string `json:"type" binding:"oneof=domestic overseas fba third_party"`
-	Country  string `json:"country" binding:"max=64"`
-	Address  string `json:"address" binding:"max=255"`
-	Manager  string `json:"manager" binding:"max=64"`
+	Code    string `json:"code" binding:"required,max=64"`
+	Name    string `json:"name" binding:"required,max=128"`
+	Type    string `json:"type" binding:"oneof=domestic overseas fba third_party"`
+	Country string `json:"country" binding:"max=64"`
+	Address string `json:"address" binding:"max=255"`
+	Manager string `json:"manager" binding:"max=64"`
 }
 
 func (h *InventoryHandler) CreateWarehouse(c *gin.Context) {

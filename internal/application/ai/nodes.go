@@ -360,9 +360,9 @@ func (n *SQLExecuteNode) Execute(ctx context.Context, input map[string]interface
 	}
 
 	return map[string]interface{}{
-		"result":  results,
-		"count":   len(results),
-		"sql":     sql,
+		"result": results,
+		"count":  len(results),
+		"sql":    sql,
 	}, nil
 }
 
@@ -437,7 +437,7 @@ func (n *ToolNode) calculateMargin(input map[string]interface{}) (map[string]int
 	}
 	margin := price.Sub(cost).Div(price).Mul(decimalFromInt(100))
 	return map[string]interface{}{
-		"margin_rate":    margin.String(),
+		"margin_rate":     margin.String(),
 		"profit_per_unit": price.Sub(cost).String(),
 	}, nil
 }

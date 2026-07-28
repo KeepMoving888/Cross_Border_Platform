@@ -38,54 +38,54 @@ type AccountConfig struct {
 
 // ProductInfo 平台商品信息(统一模型)
 type ProductInfo struct {
-	Platform       Platform `json:"platform"`
-	SellerSKU      string   `json:"seller_sku"`
-	ASIN           string   `json:"asin,omitempty"`           // Amazon
-	ItemName       string   `json:"item_name"`
-	ItemID         string   `json:"item_id"`                  // 平台商品 ID
-	Price          float64  `json:"price"`
-	Currency       string   `json:"currency"`
-	StockQuantity  int      `json:"stock_quantity"`
-	Status         string   `json:"status"`
-	ImageURL       string   `json:"image_url,omitempty"`
-	ListedAt       *time.Time `json:"listed_at,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Platform      Platform   `json:"platform"`
+	SellerSKU     string     `json:"seller_sku"`
+	ASIN          string     `json:"asin,omitempty"` // Amazon
+	ItemName      string     `json:"item_name"`
+	ItemID        string     `json:"item_id"` // 平台商品 ID
+	Price         float64    `json:"price"`
+	Currency      string     `json:"currency"`
+	StockQuantity int        `json:"stock_quantity"`
+	Status        string     `json:"status"`
+	ImageURL      string     `json:"image_url,omitempty"`
+	ListedAt      *time.Time `json:"listed_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
 }
 
 // OrderInfo 平台订单信息(统一模型)
 type OrderInfo struct {
-	Platform      Platform    `json:"platform"`
-	OrderID       string      `json:"order_id"`
-	Status        string      `json:"status"`
-	TotalAmount   float64     `json:"total_amount"`
-	Currency      string      `json:"currency"`
-	Items         []OrderItem `json:"items"`
-	BuyerName     string      `json:"buyer_name,omitempty"`
-	BuyerEmail    string      `json:"buyer_email,omitempty"`
-	ShippingAddr  string      `json:"shipping_address,omitempty"`
-	CreatedAt     *time.Time  `json:"created_at,omitempty"`
-	UpdatedAt     *time.Time  `json:"updated_at,omitempty"`
+	Platform     Platform    `json:"platform"`
+	OrderID      string      `json:"order_id"`
+	Status       string      `json:"status"`
+	TotalAmount  float64     `json:"total_amount"`
+	Currency     string      `json:"currency"`
+	Items        []OrderItem `json:"items"`
+	BuyerName    string      `json:"buyer_name,omitempty"`
+	BuyerEmail   string      `json:"buyer_email,omitempty"`
+	ShippingAddr string      `json:"shipping_address,omitempty"`
+	CreatedAt    *time.Time  `json:"created_at,omitempty"`
+	UpdatedAt    *time.Time  `json:"updated_at,omitempty"`
 }
 
 // OrderItem 订单明细
 type OrderItem struct {
-	SKU          string  `json:"sku"`
-	ProductName  string  `json:"product_name"`
-	Quantity     int     `json:"quantity"`
-	ItemPrice    float64 `json:"item_price"`
-	TotalPrice   float64 `json:"total_price"`
+	SKU         string  `json:"sku"`
+	ProductName string  `json:"product_name"`
+	Quantity    int     `json:"quantity"`
+	ItemPrice   float64 `json:"item_price"`
+	TotalPrice  float64 `json:"total_price"`
 }
 
 // SyncResult 同步结果
 type SyncResult struct {
-	Platform      Platform     `json:"platform"`
-	LastSyncAt    time.Time    `json:"last_sync_at"`
-	NewProducts   int          `json:"new_products"`
-	UpdatedProducts int        `json:"updated_products"`
-	NewOrders     int          `json:"new_orders"`
-	UpdatedOrders int          `json:"updated_orders"`
-	Errors        []SyncError  `json:"errors,omitempty"`
-	Duration      time.Duration `json:"duration"`
+	Platform        Platform      `json:"platform"`
+	LastSyncAt      time.Time     `json:"last_sync_at"`
+	NewProducts     int           `json:"new_products"`
+	UpdatedProducts int           `json:"updated_products"`
+	NewOrders       int           `json:"new_orders"`
+	UpdatedOrders   int           `json:"updated_orders"`
+	Errors          []SyncError   `json:"errors,omitempty"`
+	Duration        time.Duration `json:"duration"`
 }
 
 // SyncError 同步错误

@@ -192,10 +192,10 @@ func (h *FinanceHandler) MatchBill(c *gin.Context) {
 	}
 
 	response.OKWithMsg(c, "对账完成", gin.H{
-		"bill":           bill,
-		"system_amount":  systemAmount,
-		"diff_amount":    diff,
-		"matched":        diff.IsZero(),
+		"bill":          bill,
+		"system_amount": systemAmount,
+		"diff_amount":   diff,
+		"matched":       diff.IsZero(),
 	})
 }
 
@@ -352,11 +352,11 @@ func (h *FinanceHandler) ProfitBySKU(c *gin.Context) {
 
 func (h *FinanceHandler) ProfitByPlatform(c *gin.Context) {
 	type platformProfit struct {
-		Platform    string          `json:"platform"`
-		Revenue     decimal.Decimal `json:"revenue"`
-		NetProfit   decimal.Decimal `json:"net_profit"`
-		MarginRate  decimal.Decimal `json:"margin_rate"`
-		OrderCount  int64           `json:"order_count"`
+		Platform   string          `json:"platform"`
+		Revenue    decimal.Decimal `json:"revenue"`
+		NetProfit  decimal.Decimal `json:"net_profit"`
+		MarginRate decimal.Decimal `json:"margin_rate"`
+		OrderCount int64           `json:"order_count"`
 	}
 	var list []platformProfit
 	h.db.Table("profit_reports").

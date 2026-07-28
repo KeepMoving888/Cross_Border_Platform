@@ -8,7 +8,7 @@ import (
 
 // BaseModel 基础模型,所有表共用
 type BaseModel struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
+	ID uint `gorm:"primaryKey" json:"id"`
 	// 让 GORM 自动管理时间(避免 MySQL 8.0 sql_mode 严格模式下的 default 冲突)
 	CreatedAt time.Time      `gorm:"index" json:"created_at"`
 	UpdatedAt time.Time      `gorm:"index" json:"updated_at"`
@@ -23,8 +23,8 @@ type SoftDeleteModel struct {
 
 // Pagination 分页参数
 type Pagination struct {
-	Page     int   `form:"page" json:"page"`
-	PageSize int   `form:"page_size" json:"page_size"`
+	Page     int `form:"page" json:"page"`
+	PageSize int `form:"page_size" json:"page_size"`
 }
 
 func (p *Pagination) Normalize() {

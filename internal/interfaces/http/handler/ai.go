@@ -152,19 +152,19 @@ func (h *AIHandler) UpdateWorkflow(c *gin.Context) {
 		return
 	}
 	updates := map[string]interface{}{
-		"name":             req.Name,
-		"description":      req.Description,
-		"type":             req.Type,
-		"scene":            req.Scene,
-		"definition":       req.Definition,
-		"prompt_template":  req.PromptTemplate,
-		"input_schema":     req.InputSchema,
-		"output_schema":    req.OutputSchema,
-		"provider":         req.Provider,
-		"model":            req.Model,
-		"temperature":      req.Temperature,
-		"max_tokens":       req.MaxTokens,
-		"status":           req.Status,
+		"name":            req.Name,
+		"description":     req.Description,
+		"type":            req.Type,
+		"scene":           req.Scene,
+		"definition":      req.Definition,
+		"prompt_template": req.PromptTemplate,
+		"input_schema":    req.InputSchema,
+		"output_schema":   req.OutputSchema,
+		"provider":        req.Provider,
+		"model":           req.Model,
+		"temperature":     req.Temperature,
+		"max_tokens":      req.MaxTokens,
+		"status":          req.Status,
 	}
 	if err := h.db.Model(&models.AIWorkflow{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		response.Fail(c, errors.ErrDBOperation)
@@ -461,9 +461,9 @@ func (h *AIHandler) AnalyzeProduct(c *gin.Context) {
 
 type generateListingRequest struct {
 	ProductName string `json:"product_name" binding:"required"`
-	Features   string `json:"features"`
-	Keywords   string `json:"keywords"`
-	Market     string `json:"market"`
+	Features    string `json:"features"`
+	Keywords    string `json:"keywords"`
+	Market      string `json:"market"`
 }
 
 func (h *AIHandler) GenerateListing(c *gin.Context) {
@@ -489,9 +489,9 @@ func (h *AIHandler) GenerateListing(c *gin.Context) {
 }
 
 type replyCustomerRequest struct {
-	Product   string `json:"product" binding:"required"`
-	Question  string `json:"question" binding:"required"`
-	Language  string `json:"language"`
+	Product  string `json:"product" binding:"required"`
+	Question string `json:"question" binding:"required"`
+	Language string `json:"language"`
 }
 
 func (h *AIHandler) ReplyCustomer(c *gin.Context) {
@@ -507,9 +507,9 @@ func (h *AIHandler) ReplyCustomer(c *gin.Context) {
 	engine := ai.GetEngine(h.db)
 	result, err := engine.RunWorkflowByCode(c.Request.Context(), "wf_customer_service",
 		map[string]interface{}{
-			"product":   req.Product,
-			"question":  req.Question,
-			"language":  req.Language,
+			"product":  req.Product,
+			"question": req.Question,
+			"language": req.Language,
 		}, uint(userID))
 	if err != nil {
 		response.Fail(c, errors.Wrap(err, 9004, "客服回复生成失败"))

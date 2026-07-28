@@ -62,30 +62,30 @@ func (e *Error) HTTPStatus() int {
 // 9xxx: 系统错误
 
 var (
-	ErrInvalidParam    = New(1001, "参数错误")
-	ErrInvalidJSON     = New(1002, "JSON 解析失败")
-	ErrValidation      = New(1003, "数据校验失败")
+	ErrInvalidParam = New(1001, "参数错误")
+	ErrInvalidJSON  = New(1002, "JSON 解析失败")
+	ErrValidation   = New(1003, "数据校验失败")
 
 	ErrUnauthorized    = New(2001, "未登录或登录已过期")
 	ErrInvalidToken    = New(2002, "无效的 Token")
 	ErrAccountDisabled = New(2003, "账号已被禁用")
 	ErrWrongPassword   = New(2004, "账号或密码错误")
 
-	ErrForbidden       = New(3001, "无操作权限")
+	ErrForbidden = New(3001, "无操作权限")
 
 	ErrNotFound        = New(4001, "资源不存在")
 	ErrUserNotFound    = New(4002, "用户不存在")
 	ErrProductNotFound = New(4003, "商品不存在")
 	ErrOrderNotFound   = New(4004, "订单不存在")
 
-	ErrStateConflict   = New(5001, "状态冲突,当前状态不允许该操作")
-	ErrDuplicateEntry  = New(5002, "数据已存在")
+	ErrStateConflict     = New(5001, "状态冲突,当前状态不允许该操作")
+	ErrDuplicateEntry    = New(5002, "数据已存在")
 	ErrStockInsufficient = New(5003, "库存不足")
 
-	ErrInternal        = New(9001, "系统内部错误")
-	ErrDBOperation     = New(9002, "数据库操作失败")
-	ErrExternalAPI     = New(9003, "外部 API 调用失败")
-	ErrLLMUnavailable  = New(9004, "LLM 服务不可用")
+	ErrInternal       = New(9001, "系统内部错误")
+	ErrDBOperation    = New(9002, "数据库操作失败")
+	ErrExternalAPI    = New(9003, "外部 API 调用失败")
+	ErrLLMUnavailable = New(9004, "LLM 服务不可用")
 )
 
 // FromError 从普通 error 转换为业务错误

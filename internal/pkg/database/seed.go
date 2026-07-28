@@ -154,9 +154,9 @@ func seedMessagesAndEnrichInventory(db *gorm.DB) error {
 		// 系统欢迎
 		messages = append(messages, models.Message{
 			UserID: u.ID, Type: "system", Level: "info",
-			Title: "欢迎使用 CB-Platform 智能运营中台",
+			Title:   "欢迎使用 CB-Platform 智能运营中台",
 			Content: "选品 → 采购 → 库存 → 对账 全链路已就绪。请从工作台查看今日经营概览。",
-			Link: "/dashboard", IsRead: false,
+			Link:    "/dashboard", IsRead: false,
 			BaseModel: models.BaseModel{CreatedAt: now.Add(-48 * time.Hour), UpdatedAt: now.Add(-48 * time.Hour)},
 		})
 		// 库存预警
@@ -187,7 +187,7 @@ func seedMessagesAndEnrichInventory(db *gorm.DB) error {
 			}
 			messages = append(messages, models.Message{
 				UserID: u.ID, Type: "purchase", Level: "info",
-				Title: "采购单待跟进 · " + o.OrderNo,
+				Title:   "采购单待跟进 · " + o.OrderNo,
 				Content: fmt.Sprintf("%s 状态为 %s，预计到货请关注履约进度。", o.ProductName, o.Status),
 				RefType: "purchase", RefID: fmt.Sprintf("%d", o.ID),
 				Link: "/purchases", IsRead: false,
@@ -205,7 +205,7 @@ func seedMessagesAndEnrichInventory(db *gorm.DB) error {
 			}
 			messages = append(messages, models.Message{
 				UserID: u.ID, Type: "finance", Level: level,
-				Title: "对账待处理 · " + b.BillNo,
+				Title:   "对账待处理 · " + b.BillNo,
 				Content: fmt.Sprintf("账单状态 %s，应付金额请核对后完成对账/付款。", b.Status),
 				RefType: "bill", RefID: fmt.Sprintf("%d", b.ID),
 				Link: "/finance", IsRead: false,
@@ -543,12 +543,12 @@ func buildPurchaseOrders(products []models.Product, supMap map[string]uint, crea
 
 	// 取已通过且关联供应商的产品,生成已结算/已入库/已发货等不同状态订单
 	type orderTpl struct {
-		idx    int
-		status string
-		qty    int
-		daysAgo int
+		idx       int
+		status    string
+		qty       int
+		daysAgo   int
 		logistics string
-		company string
+		company   string
 	}
 	templates := []orderTpl{
 		{idx: 0, status: models.PurchaseStatusSettled, qty: 3000, daysAgo: 75, logistics: "SF1234567890CN", company: "顺丰国际"},
@@ -577,25 +577,25 @@ func buildPurchaseOrders(products []models.Product, supMap map[string]uint, crea
 			actual = &a
 		}
 		order := models.PurchaseOrder{
-			OrderNo:      "PO-" + now.Format("2006") + fmt.Sprintf("%04d", t.idx+1),
-			Title:        "采购 " + p.Name,
-			ProductID:    &p.ID,
-			SKU:          p.SKU,
-			ProductName:  p.Name,
-			Spec:         "标准包装",
-			SupplierID:   *p.SupplierID,
-			Quantity:     t.qty,
-			UnitPrice:    p.EstCostPrice,
-			Currency:     "CNY",
-			TotalAmount:  p.EstCostPrice.Mul(decimal.NewFromInt(int64(t.qty))),
-			PaymentTerms: "deposit_balance",
-			ExpectedDate: &expected,
-			ActualDate:   actual,
-			Status:       t.status,
-			CreatorID:    creatorID,
-			LogisticsNo:  t.logistics,
+			OrderNo:          "PO-" + now.Format("2006") + fmt.Sprintf("%04d", t.idx+1),
+			Title:            "采购 " + p.Name,
+			ProductID:        &p.ID,
+			SKU:              p.SKU,
+			ProductName:      p.Name,
+			Spec:             "标准包装",
+			SupplierID:       *p.SupplierID,
+			Quantity:         t.qty,
+			UnitPrice:        p.EstCostPrice,
+			Currency:         "CNY",
+			TotalAmount:      p.EstCostPrice.Mul(decimal.NewFromInt(int64(t.qty))),
+			PaymentTerms:     "deposit_balance",
+			ExpectedDate:     &expected,
+			ActualDate:       actual,
+			Status:           t.status,
+			CreatorID:        creatorID,
+			LogisticsNo:      t.logistics,
 			LogisticsCompany: t.company,
-			StatusHistory: `[{"status":"` + t.status + `","at":"` + createdAt.Format(time.RFC3339) + `","operator":"admin"}]`,
+			StatusHistory:    `[{"status":"` + t.status + `","at":"` + createdAt.Format(time.RFC3339) + `","operator":"admin"}]`,
 		}
 		order.CreatedAt = createdAt
 		order.UpdatedAt = now
@@ -753,14 +753,14 @@ func buildStockAlerts(invs []models.Inventory) []models.StockAlert {
 			alerts = append(alerts, models.StockAlert{
 				WarehouseID: inv.WarehouseID, SKU: inv.SKU,
 				Type: "out_of_stock", CurrentQty: 0, Threshold: inv.SafetyStock,
-				Status: "pending",
+				Status:    "pending",
 				BaseModel: models.BaseModel{CreatedAt: now.AddDate(0, 0, -1), UpdatedAt: now.AddDate(0, 0, -1)},
 			})
 		} else if inv.AvailableQty < inv.SafetyStock {
 			alerts = append(alerts, models.StockAlert{
 				WarehouseID: inv.WarehouseID, SKU: inv.SKU,
 				Type: "low_stock", CurrentQty: inv.AvailableQty, Threshold: inv.SafetyStock,
-				Status: "pending",
+				Status:    "pending",
 				BaseModel: models.BaseModel{CreatedAt: now.AddDate(0, 0, -2), UpdatedAt: now.AddDate(0, 0, -2)},
 			})
 		}
@@ -793,25 +793,25 @@ func buildBills(orders []models.PurchaseOrder, supMap map[string]uint) []models.
 			status = "matching"
 		}
 		bill := models.Bill{
-			BillNo:          fmt.Sprintf("BILL-%04d", i+1),
-			OrderID:         &o.ID,
-			OrderNo:         o.OrderNo,
-			SupplierID:      o.SupplierID,
-			Type:            "purchase",
-			PeriodStart:     &o.CreatedAt,
-			PeriodEnd:       o.ExpectedDate,
-			PayableAmount:   o.TotalAmount,
-			PaidAmount:      o.TotalAmount.Sub(diff),
-			DiffAmount:      diff,
-			Currency:        "CNY",
-			Status:          status,
+			BillNo:           fmt.Sprintf("BILL-%04d", i+1),
+			OrderID:          &o.ID,
+			OrderNo:          o.OrderNo,
+			SupplierID:       o.SupplierID,
+			Type:             "purchase",
+			PeriodStart:      &o.CreatedAt,
+			PeriodEnd:        o.ExpectedDate,
+			PayableAmount:    o.TotalAmount,
+			PaidAmount:       o.TotalAmount.Sub(diff),
+			DiffAmount:       diff,
+			Currency:         "CNY",
+			Status:           status,
 			SettlementMethod: o.PaymentTerms,
-			PayeeName:       supplierNameByCode(supMap, o.SupplierID),
-			PayeeAccount:    fmt.Sprintf("6222-0000-%04d-%04d", o.SupplierID*1111, o.SupplierID*2222),
-			CreatorID:       o.CreatorID,
-			MatchedAt:       matchedAt,
-			PaidAt:          paidAt,
-			Remark:          "采购 " + o.ProductName,
+			PayeeName:        supplierNameByCode(supMap, o.SupplierID),
+			PayeeAccount:     fmt.Sprintf("6222-0000-%04d-%04d", o.SupplierID*1111, o.SupplierID*2222),
+			CreatorID:        o.CreatorID,
+			MatchedAt:        matchedAt,
+			PaidAt:           paidAt,
+			Remark:           "采购 " + o.ProductName,
 		}
 		bill.CreatedAt = o.CreatedAt.AddDate(0, 0, 20)
 		bill.UpdatedAt = now
@@ -869,26 +869,26 @@ func buildProfitReports(products []models.Product) []models.ProfitReport {
 				roi = netProfit.Div(goodsCost).Mul(decimal.NewFromInt(100))
 			}
 			reports = append(reports, models.ProfitReport{
-				Period:      "day",
-				StatDate:    statDate,
-				SKU:         p.SKU,
-				Platform:    p.Platform,
-				Market:      p.TargetMarket,
-				Revenue:     revenue,
-				Qty:         qty,
-				GoodsCost:   goodsCost,
-				FreightCost: freightCost,
-				PlatformFee: platformFee,
-				AdCost:      adCost,
-				TaxCost:     taxCost,
-				RefundCost:  refundCost,
-				OtherCost:   otherCost,
+				Period:       "day",
+				StatDate:     statDate,
+				SKU:          p.SKU,
+				Platform:     p.Platform,
+				Market:       p.TargetMarket,
+				Revenue:      revenue,
+				Qty:          qty,
+				GoodsCost:    goodsCost,
+				FreightCost:  freightCost,
+				PlatformFee:  platformFee,
+				AdCost:       adCost,
+				TaxCost:      taxCost,
+				RefundCost:   refundCost,
+				OtherCost:    otherCost,
 				ExchangeRate: decimal.NewFromFloat(7.2),
-				Currency:    p.Currency,
-				GrossProfit: revenue.Sub(goodsCost).Sub(freightCost),
-				NetProfit:   netProfit,
-				MarginRate:  marginRate,
-				ROI:         roi,
+				Currency:     p.Currency,
+				GrossProfit:  revenue.Sub(goodsCost).Sub(freightCost),
+				NetProfit:    netProfit,
+				MarginRate:   marginRate,
+				ROI:          roi,
 			})
 		}
 	}
@@ -938,16 +938,16 @@ func buildAIWorkflowRuns() []models.AIWorkflowRun {
 				}
 				return ""
 			}(t.status),
-			Duration:          t.dur,
-			PromptTokens:      t.tokens - 200,
-			CompletionTokens:  200,
-			TotalTokens:       t.tokens,
-			Cost:              decimal.NewFromFloat(t.cost),
-			OperatorID:        operID,
-			RefType:           t.refType,
-			RefID:             t.refID,
-			StartedAt:         &started,
-			CompletedAt:       &completed,
+			Duration:         t.dur,
+			PromptTokens:     t.tokens - 200,
+			CompletionTokens: 200,
+			TotalTokens:      t.tokens,
+			Cost:             decimal.NewFromFloat(t.cost),
+			OperatorID:       operID,
+			RefType:          t.refType,
+			RefID:            t.refID,
+			StartedAt:        &started,
+			CompletedAt:      &completed,
 		})
 	}
 	return runs
@@ -1140,60 +1140,60 @@ func defaultAIWorkflows() []models.AIWorkflow {
 		{
 			Code: "wf_product_analysis", Name: "选品 AI 分析",
 			Description: "基于市场数据、竞品情况、成本结构,输出选品评分与建议",
-			Type: "agent", Scene: "product_analysis",
-			Definition: `{"nodes":[{"id":"input","type":"input"},{"id":"llm","type":"llm","config":{"system_prompt":"你是跨境电商选品专家","user_prompt":"分析以下选品:{{.sku}} {{.name}} 类目:{{.category}} 售价:{{.list_price}} 成本:{{.est_cost_price}} 月销:{{.monthly_sales}}"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"llm"},{"from":"llm","to":"output"}]}`,
+			Type:        "agent", Scene: "product_analysis",
+			Definition:     `{"nodes":[{"id":"input","type":"input"},{"id":"llm","type":"llm","config":{"system_prompt":"你是跨境电商选品专家","user_prompt":"分析以下选品:{{.sku}} {{.name}} 类目:{{.category}} 售价:{{.list_price}} 成本:{{.est_cost_price}} 月销:{{.monthly_sales}}"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"llm"},{"from":"llm","to":"output"}]}`,
 			PromptTemplate: "分析以下选品:{{.sku}} {{.name}} 类目:{{.category}} 售价:{{.list_price}} 成本:{{.est_cost_price}} 月销:{{.monthly_sales}}",
-			InputSchema:  `{"type":"object","properties":{"sku":{"type":"string"},"name":{"type":"string"},"category":{"type":"string"},"list_price":{"type":"number"},"est_cost_price":{"type":"number"},"monthly_sales":{"type":"integer"}}}`,
-			OutputSchema: `{"type":"object","properties":{"score":{"type":"number"},"recommendation":{"type":"string"},"reasons":{"type":"array"},"risks":{"type":"array"}}}`,
-			Provider: "glm", Model: "glm-4-plus",
+			InputSchema:    `{"type":"object","properties":{"sku":{"type":"string"},"name":{"type":"string"},"category":{"type":"string"},"list_price":{"type":"number"},"est_cost_price":{"type":"number"},"monthly_sales":{"type":"integer"}}}`,
+			OutputSchema:   `{"type":"object","properties":{"score":{"type":"number"},"recommendation":{"type":"string"},"reasons":{"type":"array"},"risks":{"type":"array"}}}`,
+			Provider:       "glm", Model: "glm-4-plus",
 			Temperature: decimal.NewFromFloat(0.30), MaxTokens: 2000,
 			Status: "enabled", Version: 1,
 		},
 		{
 			Code: "wf_purchase_assistant", Name: "采购助手",
 			Description: "评估供应商报价合理性、交付风险,给出谈判建议",
-			Type: "automation", Scene: "purchase_assistant",
-			Definition: `{"nodes":[{"id":"input","type":"input"},{"id":"llm","type":"llm","config":{"system_prompt":"你是跨境电商采购谈判专家"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"llm"},{"from":"llm","to":"output"}]}`,
+			Type:        "automation", Scene: "purchase_assistant",
+			Definition:     `{"nodes":[{"id":"input","type":"input"},{"id":"llm","type":"llm","config":{"system_prompt":"你是跨境电商采购谈判专家"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"llm"},{"from":"llm","to":"output"}]}`,
 			PromptTemplate: "评估采购单 {{.order_no}} 供应商报价 {{.unit_price}} 数量 {{.quantity}}",
-			InputSchema:  `{"type":"object","properties":{"order_no":{"type":"string"},"unit_price":{"type":"number"},"quantity":{"type":"integer"}}}`,
-			OutputSchema: `{"type":"object","properties":{"price_reasonable":{"type":"boolean"},"market_avg":{"type":"number"},"delivery_risk":{"type":"string"},"negotiation":{"type":"string"}}}`,
-			Provider: "glm", Model: "glm-4-plus",
+			InputSchema:    `{"type":"object","properties":{"order_no":{"type":"string"},"unit_price":{"type":"number"},"quantity":{"type":"integer"}}}`,
+			OutputSchema:   `{"type":"object","properties":{"price_reasonable":{"type":"boolean"},"market_avg":{"type":"number"},"delivery_risk":{"type":"string"},"negotiation":{"type":"string"}}}`,
+			Provider:       "glm", Model: "glm-4-plus",
 			Temperature: decimal.NewFromFloat(0.20), MaxTokens: 1500,
 			Status: "enabled", Version: 1,
 		},
 		{
 			Code: "wf_customer_service", Name: "智能客服",
 			Description: "自动回复客户咨询,支持多语言",
-			Type: "rag", Scene: "customer_service",
-			Definition: `{"nodes":[{"id":"input","type":"input"},{"id":"rag","type":"rag","config":{"knowledge_base_id":3,"top_k":3}},{"id":"llm","type":"llm","config":{"system_prompt":"You are a professional customer service agent for home & beauty appliances. Reply in the user's language."}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"rag"},{"from":"rag","to":"llm"},{"from":"llm","to":"output"}]}`,
+			Type:        "rag", Scene: "customer_service",
+			Definition:     `{"nodes":[{"id":"input","type":"input"},{"id":"rag","type":"rag","config":{"knowledge_base_id":3,"top_k":3}},{"id":"llm","type":"llm","config":{"system_prompt":"You are a professional customer service agent for home & beauty appliances. Reply in the user's language."}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"rag"},{"from":"rag","to":"llm"},{"from":"llm","to":"output"}]}`,
 			PromptTemplate: "用户问题:{{.question}}\n相关文档:{{.rag_context}}",
-			InputSchema:  `{"type":"object","properties":{"question":{"type":"string"},"language":{"type":"string"}}}`,
-			OutputSchema: `{"type":"object","properties":{"reply":{"type":"string"},"language":{"type":"string"},"confidence":{"type":"number"}}}`,
-			Provider: "claude", Model: "claude-sonnet-4-5-20250929",
+			InputSchema:    `{"type":"object","properties":{"question":{"type":"string"},"language":{"type":"string"}}}`,
+			OutputSchema:   `{"type":"object","properties":{"reply":{"type":"string"},"language":{"type":"string"},"confidence":{"type":"number"}}}`,
+			Provider:       "claude", Model: "claude-sonnet-4-5-20250929",
 			Temperature: decimal.NewFromFloat(0.50), MaxTokens: 1000,
 			Status: "enabled", Version: 1,
 		},
 		{
 			Code: "wf_data_analysis", Name: "数据分析助手",
 			Description: "自然语言转 SQL,生成销售/库存/利润报表",
-			Type: "text2sql", Scene: "data_analysis",
-			Definition: `{"nodes":[{"id":"input","type":"input"},{"id":"text2sql","type":"text2sql"},{"id":"sql_execute","type":"sql_execute"},{"id":"llm","type":"llm","config":{"system_prompt":"你是数据分析专家,基于 SQL 查询结果给出业务洞察"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"text2sql"},{"from":"text2sql","to":"sql_execute"},{"from":"sql_execute","to":"llm"},{"from":"llm","to":"output"}]}`,
+			Type:        "text2sql", Scene: "data_analysis",
+			Definition:     `{"nodes":[{"id":"input","type":"input"},{"id":"text2sql","type":"text2sql"},{"id":"sql_execute","type":"sql_execute"},{"id":"llm","type":"llm","config":{"system_prompt":"你是数据分析专家,基于 SQL 查询结果给出业务洞察"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"text2sql"},{"from":"text2sql","to":"sql_execute"},{"from":"sql_execute","to":"llm"},{"from":"llm","to":"output"}]}`,
 			PromptTemplate: "用户问题:{{.question}}\nSQL 结果:{{.result}}",
-			InputSchema:  `{"type":"object","properties":{"question":{"type":"string"}}}`,
-			OutputSchema: `{"type":"object","properties":{"sql":{"type":"string"},"result":{"type":"array"},"insight":{"type":"string"}}}`,
-			Provider: "glm", Model: "glm-4-plus",
+			InputSchema:    `{"type":"object","properties":{"question":{"type":"string"}}}`,
+			OutputSchema:   `{"type":"object","properties":{"sql":{"type":"string"},"result":{"type":"array"},"insight":{"type":"string"}}}`,
+			Provider:       "glm", Model: "glm-4-plus",
 			Temperature: decimal.NewFromFloat(0.10), MaxTokens: 1500,
 			Status: "enabled", Version: 1,
 		},
 		{
 			Code: "wf_content_generation", Name: "内容生成",
 			Description: "生成产品 Listing 标题、五点描述、A+ 页面文案",
-			Type: "agent", Scene: "content_generation",
-			Definition: `{"nodes":[{"id":"input","type":"input"},{"id":"llm","type":"llm","config":{"system_prompt":"你是亚马逊 Listing 优化专家,精通 SEO 与转化文案"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"llm"},{"from":"llm","to":"output"}]}`,
+			Type:        "agent", Scene: "content_generation",
+			Definition:     `{"nodes":[{"id":"input","type":"input"},{"id":"llm","type":"llm","config":{"system_prompt":"你是亚马逊 Listing 优化专家,精通 SEO 与转化文案"}},{"id":"output","type":"output"}],"edges":[{"from":"input","to":"llm"},{"from":"llm","to":"output"}]}`,
 			PromptTemplate: "为产品 {{.name}} (SKU: {{.sku}}, 类目: {{.category}}) 生成亚马逊 Listing",
-			InputSchema:  `{"type":"object","properties":{"sku":{"type":"string"},"name":{"type":"string"},"category":{"type":"string"}}}`,
-			OutputSchema: `{"type":"object","properties":{"title":{"type":"string"},"bullets":{"type":"array"},"description":{"type":"string"}}}`,
-			Provider: "claude", Model: "claude-sonnet-4-5-20250929",
+			InputSchema:    `{"type":"object","properties":{"sku":{"type":"string"},"name":{"type":"string"},"category":{"type":"string"}}}`,
+			OutputSchema:   `{"type":"object","properties":{"title":{"type":"string"},"bullets":{"type":"array"},"description":{"type":"string"}}}`,
+			Provider:       "claude", Model: "claude-sonnet-4-5-20250929",
 			Temperature: decimal.NewFromFloat(0.70), MaxTokens: 2500,
 			Status: "enabled", Version: 1,
 		},
@@ -1205,7 +1205,7 @@ func defaultPromptTemplates() []models.PromptTemplate {
 	return []models.PromptTemplate{
 		{
 			Code: "pt_product_score", Name: "选品评分 Prompt",
-			Scene: "product_analysis",
+			Scene:        "product_analysis",
 			SystemPrompt: "你是跨境电商选品专家,擅长家电美容品类。基于市场数据、竞品情况、成本结构,输出选品评分(0-100)与建议。",
 			UserPrompt: `请分析以下选品并输出 JSON:
 - SKU: {{.sku}}
@@ -1231,7 +1231,7 @@ func defaultPromptTemplates() []models.PromptTemplate {
 		},
 		{
 			Code: "pt_purchase_eval", Name: "采购报价评估 Prompt",
-			Scene: "purchase_assistant",
+			Scene:        "purchase_assistant",
 			SystemPrompt: "你是跨境电商采购谈判专家,熟悉中国家电美容产业链供应商生态,能精准评估报价合理性与交付风险。",
 			UserPrompt: `评估以下采购单:
 - 采购单号: {{.order_no}}
@@ -1253,7 +1253,7 @@ func defaultPromptTemplates() []models.PromptTemplate {
 		},
 		{
 			Code: "pt_cs_reply", Name: "客服回复 Prompt",
-			Scene: "customer_service",
+			Scene:        "customer_service",
 			SystemPrompt: "You are a professional customer service agent for home & beauty appliances brand. Reply in the user's language. Be concise, friendly and accurate.",
 			UserPrompt: `Customer question: {{.question}}
 
@@ -1266,7 +1266,7 @@ Reply:`,
 		},
 		{
 			Code: "pt_listing_gen", Name: "Listing 生成 Prompt",
-			Scene: "content_generation",
+			Scene:        "content_generation",
 			SystemPrompt: "你是亚马逊 Listing 优化专家,精通 SEO 与转化文案,擅长家电美容品类。",
 			UserPrompt: `为以下产品生成亚马逊 Listing:
 - 产品: {{.name}}

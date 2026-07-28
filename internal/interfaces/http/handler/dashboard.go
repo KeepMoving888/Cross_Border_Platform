@@ -22,20 +22,20 @@ func NewDashboardHandler(db *gorm.DB) *DashboardHandler {
 // overviewResp 工作台总览返回结构(对齐前端 DashboardOverview)
 type overviewResp struct {
 	// 销售 & 利润
-	TodaySales      decimal.Decimal `json:"today_sales"`
-	YesterdaySales  decimal.Decimal `json:"yesterday_sales"`
-	MonthSales      decimal.Decimal `json:"month_sales"`
-	NetProfit       decimal.Decimal `json:"net_profit"`
-	TotalRevenue    decimal.Decimal `json:"total_revenue"`
-	MonthProfit     decimal.Decimal `json:"month_profit"`
-	MarginRate      decimal.Decimal `json:"margin_rate"`
-	OrderCount30d   int64           `json:"order_count_30d"`
-	RefundAmount    decimal.Decimal `json:"refund_amount"`
+	TodaySales     decimal.Decimal `json:"today_sales"`
+	YesterdaySales decimal.Decimal `json:"yesterday_sales"`
+	MonthSales     decimal.Decimal `json:"month_sales"`
+	NetProfit      decimal.Decimal `json:"net_profit"`
+	TotalRevenue   decimal.Decimal `json:"total_revenue"`
+	MonthProfit    decimal.Decimal `json:"month_profit"`
+	MarginRate     decimal.Decimal `json:"margin_rate"`
+	OrderCount30d  int64           `json:"order_count_30d"`
+	RefundAmount   decimal.Decimal `json:"refund_amount"`
 	// 选品
 	ProductTotal    int64 `json:"product_total"`
 	ProductApproved int64 `json:"product_approved"`
 	ProductSourcing int64 `json:"product_sourcing"`
-	NewProducts7d  int64 `json:"new_products_7d"`
+	NewProducts7d   int64 `json:"new_products_7d"`
 	// 采购
 	PurchasePending int64 `json:"pending_purchase_orders"`
 	PurchaseTotal   int64 `json:"purchase_total"`
@@ -43,12 +43,12 @@ type overviewResp struct {
 	SupplierActive int64 `json:"supplier_active"`
 	// 库存
 	InventorySKUs int64 `json:"inventory_skus"`
-	StockAlerts  int64 `json:"inventory_alerts"`
+	StockAlerts   int64 `json:"inventory_alerts"`
 	// 财务对账
 	BillsPending int64 `json:"bills_pending"`
 	// AI
-	AIRunsToday    int64 `json:"ai_runs_today"`
-	AIRunsTotal    int64 `json:"ai_runs_total"`
+	AIRunsToday    int64           `json:"ai_runs_today"`
+	AIRunsTotal    int64           `json:"ai_runs_total"`
 	AIRunningTasks int64           `json:"ai_running_tasks"`
 	AISuccessRate  decimal.Decimal `json:"ai_success_rate"`
 }
@@ -273,8 +273,8 @@ func (h *DashboardHandler) ProductStats(c *gin.Context) {
 		Scan(&byStage)
 
 	type categoryStat struct {
-		Category string `json:"category"`
-		Count    int64  `json:"count"`
+		Category string  `json:"category"`
+		Count    int64   `json:"count"`
 		AvgScore float64 `json:"avg_score"`
 	}
 	var byCategory []categoryStat

@@ -75,18 +75,18 @@ func (h *SupplierHandler) Get(c *gin.Context) {
 }
 
 type createSupplierRequest struct {
-	Name            string          `json:"name" binding:"required,max=128"`
-	Code            string          `json:"code" binding:"max=64"`
-	ContactName     string          `json:"contact_name" binding:"max=64"`
-	Phone           string          `json:"phone" binding:"max=32"`
-	Email           string          `json:"email" binding:"omitempty,email,max=128"`
-	Address         string          `json:"address" binding:"max=255"`
-	Region          string          `json:"region" binding:"max=64"`
-	PaymentTerms    string          `json:"payment_terms" binding:"max=128"`
-	SettlementCycle string          `json:"settlement_cycle" binding:"max=64"`
-	Rating          string          `json:"rating" binding:"omitempty,oneof=A B C"`
-	CoopStatus      string          `json:"coop_status" binding:"omitempty,oneof=active suspended terminated"`
-	Remark          string          `json:"remark"`
+	Name            string `json:"name" binding:"required,max=128"`
+	Code            string `json:"code" binding:"max=64"`
+	ContactName     string `json:"contact_name" binding:"max=64"`
+	Phone           string `json:"phone" binding:"max=32"`
+	Email           string `json:"email" binding:"omitempty,email,max=128"`
+	Address         string `json:"address" binding:"max=255"`
+	Region          string `json:"region" binding:"max=64"`
+	PaymentTerms    string `json:"payment_terms" binding:"max=128"`
+	SettlementCycle string `json:"settlement_cycle" binding:"max=64"`
+	Rating          string `json:"rating" binding:"omitempty,oneof=A B C"`
+	CoopStatus      string `json:"coop_status" binding:"omitempty,oneof=active suspended terminated"`
+	Remark          string `json:"remark"`
 }
 
 func (h *SupplierHandler) Create(c *gin.Context) {

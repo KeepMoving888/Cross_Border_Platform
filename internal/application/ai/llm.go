@@ -24,32 +24,32 @@ type LLMProvider interface {
 
 // ChatRequest 聊天请求
 type ChatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []Message     `json:"messages"`
-	Temperature float64       `json:"temperature,omitempty"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Tools       []Tool        `json:"tools,omitempty"`
-	Stream      bool          `json:"stream,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Temperature float64   `json:"temperature,omitempty"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Tools       []Tool    `json:"tools,omitempty"`
+	Stream      bool      `json:"stream,omitempty"`
 }
 
 // Message 消息
 type Message struct {
-	Role    string `json:"role"`              // system / user / assistant / tool
-	Content string `json:"content"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string `json:"tool_call_id,omitempty"`
+	Role       string     `json:"role"` // system / user / assistant / tool
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // Tool 工具(function calling)
 type Tool struct {
-	Type     string   `json:"type"`              // function
+	Type     string   `json:"type"` // function
 	Function Function `json:"function"`
 }
 
 // Function 函数定义
 type Function struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 
@@ -122,7 +122,7 @@ type GLMProvider struct {
 
 func NewGLMProvider(cfg config.LLMConfig) *GLMProvider {
 	return &GLMProvider{
-		cfg: cfg,
+		cfg:    cfg,
 		client: &http.Client{Timeout: 60 * time.Second},
 	}
 }

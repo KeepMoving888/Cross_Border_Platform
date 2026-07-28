@@ -233,13 +233,13 @@ func (h *PlatformHandler) ListPlatformOrders(c *gin.Context) {
 	}
 
 	response.OK(c, gin.H{
-		"account_id":   acc.ID,
-		"platform":     acc.Platform,
-		"page":         page,
-		"size":         size,
-		"total":        total,
-		"start_date":   start.Format("2006-01-02"),
-		"end_date":     end.Format("2006-01-02"),
-		"orders":       orders,
+		"account_id": acc.ID,
+		"platform":   acc.Platform,
+		"page":       page,
+		"size":       size,
+		"total":      total,
+		"start_date": start.Format("2006-01-02"),
+		"end_date":   end.Format("2006-01-02"),
+		"orders":     orders,
 	})
 }

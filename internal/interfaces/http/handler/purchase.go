@@ -192,15 +192,15 @@ func (h *PurchaseHandler) ListQuotes(c *gin.Context) {
 }
 
 type createQuoteRequest struct {
-	InquiryID    uint            `json:"inquiry_id" binding:"required"`
-	SupplierID   uint            `json:"supplier_id" binding:"required"`
-	UnitPrice    decimal.Decimal `json:"unit_price" binding:"required"`
-	Currency     string          `json:"currency"`
-	LeadTime     int             `json:"lead_time"`
-	MOQ          int             `json:"moq"`
-	TaxIncluded  bool            `json:"tax_included"`
-	ValidUntil   *time.Time      `json:"valid_until"`
-	Remark       string          `json:"remark"`
+	InquiryID   uint            `json:"inquiry_id" binding:"required"`
+	SupplierID  uint            `json:"supplier_id" binding:"required"`
+	UnitPrice   decimal.Decimal `json:"unit_price" binding:"required"`
+	Currency    string          `json:"currency"`
+	LeadTime    int             `json:"lead_time"`
+	MOQ         int             `json:"moq"`
+	TaxIncluded bool            `json:"tax_included"`
+	ValidUntil  *time.Time      `json:"valid_until"`
+	Remark      string          `json:"remark"`
 }
 
 func (h *PurchaseHandler) CreateQuote(c *gin.Context) {
@@ -280,10 +280,10 @@ func (h *PurchaseHandler) SelectQuote(c *gin.Context) {
 
 type listOrderQuery struct {
 	Pagination
-	Keyword     string `form:"keyword"`
-	Status      string `form:"status"`
-	SupplierID  string `form:"supplier_id"`
-	SKU         string `form:"sku"`
+	Keyword    string `form:"keyword"`
+	Status     string `form:"status"`
+	SupplierID string `form:"supplier_id"`
+	SKU        string `form:"sku"`
 }
 
 func (h *PurchaseHandler) ListOrders(c *gin.Context) {
@@ -330,28 +330,28 @@ func (h *PurchaseHandler) GetOrder(c *gin.Context) {
 	var receives []models.ReceiveRecord
 	h.db.Where("order_id = ?", id).Find(&receives)
 	response.OK(c, gin.H{
-		"order":    order,
-		"logs":     logs,
-		"receives": receives,
+		"order":                order,
+		"logs":                 logs,
+		"receives":             receives,
 		"current_status_label": purchase.StatusLabel(order.Status),
 		"allowed_events":       h.allowedEvents(order.Status),
 	})
 }
 
 type createOrderRequest struct {
-	Title         string          `json:"title"`
-	InquiryID     *uint           `json:"inquiry_id"`
-	ProductID     *uint           `json:"product_id"`
-	SKU           string          `json:"sku" binding:"max=64"`
-	ProductName   string          `json:"product_name" binding:"required,max=255"`
-	Spec          string          `json:"spec"`
-	SupplierID    uint            `json:"supplier_id" binding:"required"`
-	Quantity      int             `json:"quantity" binding:"required,min=1"`
-	UnitPrice     decimal.Decimal `json:"unit_price" binding:"required"`
-	Currency      string          `json:"currency"`
-	PaymentTerms  string          `json:"payment_terms"`
-	ExpectedDate  *time.Time      `json:"expected_date"`
-	Remark        string          `json:"remark"`
+	Title        string          `json:"title"`
+	InquiryID    *uint           `json:"inquiry_id"`
+	ProductID    *uint           `json:"product_id"`
+	SKU          string          `json:"sku" binding:"max=64"`
+	ProductName  string          `json:"product_name" binding:"required,max=255"`
+	Spec         string          `json:"spec"`
+	SupplierID   uint            `json:"supplier_id" binding:"required"`
+	Quantity     int             `json:"quantity" binding:"required,min=1"`
+	UnitPrice    decimal.Decimal `json:"unit_price" binding:"required"`
+	Currency     string          `json:"currency"`
+	PaymentTerms string          `json:"payment_terms"`
+	ExpectedDate *time.Time      `json:"expected_date"`
+	Remark       string          `json:"remark"`
 }
 
 func (h *PurchaseHandler) CreateOrder(c *gin.Context) {
@@ -454,11 +454,11 @@ func (h *PurchaseHandler) UpdateOrder(c *gin.Context) {
 }
 
 type transitionRequest struct {
-	Event     string `json:"event" binding:"required"`
-	Remark    string `json:"remark"`
-	LogisticsNo string `json:"logistics_no"`
-	LogisticsCompany string `json:"logistics_company"`
-	ActualDate *time.Time `json:"actual_date"`
+	Event            string     `json:"event" binding:"required"`
+	Remark           string     `json:"remark"`
+	LogisticsNo      string     `json:"logistics_no"`
+	LogisticsCompany string     `json:"logistics_company"`
+	ActualDate       *time.Time `json:"actual_date"`
 }
 
 // Transition 状态机驱动状态变更
@@ -556,11 +556,11 @@ func (h *PurchaseHandler) handleReceive(tx *gorm.DB, order *models.PurchaseOrder
 	result := tx.Where("warehouse_id = ? AND sku = ?", wh.ID, order.SKU).First(&inv)
 	if result.Error != nil {
 		inv = models.Inventory{
-			WarehouseID:   wh.ID,
-			SKU:           order.SKU,
-			AvailableQty:  0,
-			UnitCost:      order.UnitPrice,
-			Currency:      order.Currency,
+			WarehouseID:  wh.ID,
+			SKU:          order.SKU,
+			AvailableQty: 0,
+			UnitCost:     order.UnitPrice,
+			Currency:     order.Currency,
 		}
 		if err := tx.Create(&inv).Error; err != nil {
 			return err
@@ -613,10 +613,10 @@ func (h *PurchaseHandler) handleReceive(tx *gorm.DB, order *models.PurchaseOrder
 func (h *PurchaseHandler) Receive(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Quantity      int    `json:"quantity" binding:"required,min=1"`
-		WarehouseID   uint   `json:"warehouse_id"`
-		LogisticsNo   string `json:"logistics_no"`
-		QCRemark      string `json:"qc_remark"`
+		Quantity    int    `json:"quantity" binding:"required,min=1"`
+		WarehouseID uint   `json:"warehouse_id"`
+		LogisticsNo string `json:"logistics_no"`
+		QCRemark    string `json:"qc_remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, errors.Wrap(err, 1001, "参数错误"))

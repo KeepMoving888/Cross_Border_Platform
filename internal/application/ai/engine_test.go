@@ -131,8 +131,8 @@ func TestNewLLMProvider_Qwen(t *testing.T) {
 }
 
 func TestNewLLMProvider_DefaultFallback(t *testing.T) {
-	// 未知 provider 应该回退到 OpenAI 兼容
-	cfg := config.LLMConfig{Provider: "unknown_provider"}
+	// 未知 provider(配置了 API Key)应该回退到 OpenAI 兼容
+	cfg := config.LLMConfig{Provider: "unknown_provider", APIKey: "test-key"}
 	p, err := NewLLMProvider(cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
