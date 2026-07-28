@@ -22,27 +22,49 @@ const ragCacheTTL = time.Hour
 
 // RAGService RAG 检索服务
 // 检索链路: Redis 缓存 -> 向量+BM25 混合检索(RRF 融合) -> Reranker 重排序
-// 降级链路: 无 pgvector -> TF-IDF 关键词检索; 无 Rerank API -> 启发式重排
+// 降级链路: 无 VectorStore -> TF-IDF 关键词检索; 无 Rerank API -> 启发式重排
 type RAGService struct {
-	mysqlDB  *gorm.DB          // MySQL(存储文档元数据,必须)
-	pgDB     *gorm.DB          // PostgreSQL + pgvector(可选,用于向量检索)
-	embedder EmbeddingProvider // Embedding 生成器
-	reranker RerankerProvider  // Reranker 重排序器(可选,nil 时跳过重排)
-	redis    *redis.Client     // Redis 缓存(可选,nil 时跳过缓存)
+	mysqlDB     *gorm.DB          // MySQL(存储文档元数据,必须)
+	pgDB        *gorm.DB          // PostgreSQL + pgvector(可选,用于 BM25 全文检索)
+	vectorStore VectorStore       // 向量存储抽象(pgvector/memory/milvus,可选)
+	embedder    EmbeddingProvider // Embedding 生成器
+	reranker    RerankerProvider  // Reranker 重排序器(可选,nil 时跳过重排)
+	redis       *redis.Client     // Redis 缓存(可选,nil 时跳过缓存)
 }
 
 // NewRAGService 创建 RAG 服务
 // mysqlDB: 业务数据库(必须)
-// pgDB: 向量数据库(可选,nil 时降级到 TF-IDF)
+// pgDB: PostgreSQL(可选,启用时同时用于 BM25 检索和 PgVectorStore)
 // cfg: LLM 配置(决定 Embedding 和 Reranker provider)
+// 向量存储默认使用 PgVectorStore(基于 pgDB),可通过 SetVectorStore 替换为其他实现
 func NewRAGService(mysqlDB *gorm.DB, pgDB *gorm.DB, cfg config.LLMConfig) *RAGService {
-	return &RAGService{
+	svc := &RAGService{
 		mysqlDB:  mysqlDB,
 		pgDB:     pgDB,
 		embedder: NewEmbeddingProvider(cfg),
 		reranker: NewRerankerProvider(cfg),
 		redis:    nil, // 默认不开缓存,由 SetRedis 注入
 	}
+	// pgDB 可用时默认创建 PgVectorStore
+	// 测试或本地开发可通过 SetVectorStore 注入 InMemoryVectorStore
+	if pgDB != nil {
+		svc.vectorStore = NewPgVectorStore(pgDB)
+	}
+	return svc
+}
+
+// SetVectorStore 注入自定义 VectorStore(用于测试或运行时切换存储后端)
+// 传入 nil 等同于禁用向量检索(降级到 TF-IDF)
+func (r *RAGService) SetVectorStore(s VectorStore) {
+	r.vectorStore = s
+}
+
+// VectorStoreName 返回当前向量存储类型标识(用于监控和调试)
+func (r *RAGService) VectorStoreName() string {
+	if r.vectorStore == nil {
+		return "none"
+	}
+	return r.vectorStore.Name()
 }
 
 // SetRedis 注入 Redis 客户端以启用检索结果缓存
@@ -96,7 +118,9 @@ func (r *RAGService) Search(query string, knowledgeBaseID uint, topK int) ([]RAG
 	strategy := "tfidf"
 	var finalDocs []RAGDocument
 
-	if r.pgDB != nil {
+	// 向量检索可用性: VectorStore 已注入且 Available
+	vecAvailable := r.vectorStore != nil && r.vectorStore.Available()
+	if vecAvailable {
 		// 2a. 向量检索 + BM25 检索并行
 		var (
 			vecDocs []RAGDocument
@@ -113,6 +137,7 @@ func (r *RAGService) Search(query string, knowledgeBaseID uint, topK int) ([]RAG
 			logger.Get().Warnf("vector search failed: %v", vecErr)
 		}
 		// BM25 检索(基于 PostgreSQL tsvector,失败静默)
+		// BM25 仍直接使用 pgDB,因为它依赖 PostgreSQL 的 tsvector 列和 GIN 索引
 		bmDocs, _ = r.bm25Search(context.Background(), query, knowledgeBaseID, recallN)
 
 		// 2b. RRF 融合(两路都有结果时融合,单路时直接用)
@@ -268,10 +293,16 @@ func (r *RAGService) SearchAsContext(query string, knowledgeBaseID uint, topK in
 	return sb.String()
 }
 
-// ============== 向量检索(pgvector) ==============
+// ============== 向量检索(VectorStore 抽象) ==============
 
-// vectorSearch 使用 pgvector 进行语义检索
+// vectorSearch 通过 VectorStore 接口进行语义检索
+// 内部流程: 生成 query embedding -> 调用 VectorStore.Search -> 转换为 RAGDocument
+// 支持 PgVectorStore / InMemoryVectorStore / 未来的 MilvusStore 等实现
 func (r *RAGService) vectorSearch(ctx context.Context, query string, kbID uint, topK int) ([]RAGDocument, error) {
+	if r.vectorStore == nil || !r.vectorStore.Available() {
+		return nil, fmt.Errorf("vector store unavailable")
+	}
+
 	// 生成查询向量
 	embeddings, err := r.embedder.Embed(ctx, []string{query})
 	if err != nil {
@@ -281,50 +312,25 @@ func (r *RAGService) vectorSearch(ctx context.Context, query string, kbID uint, 
 		return nil, fmt.Errorf("empty embedding result")
 	}
 	queryVec := embeddings[0]
-	vecStr := vectorToPgString(queryVec)
 
-	// 使用 pgvector 的 <=> 运算符(余弦距离)检索
-	// SQL: SELECT kc.content, kc.chunk_index, kd.title, kd.source,
-	//             1 - (kc.embedding <=> '[...]') AS score
-	//      FROM knowledge_chunks kc
-	//      JOIN knowledge_documents kd ON kc.knowledge_doc_id = kd.id
-	//      WHERE kd.status = 'ready' [AND kc.knowledge_base_id = ?]
-	//      ORDER BY kc.embedding <=> '[...]'
-	//      LIMIT ?
-	sql := `
-		SELECT kd.title, kd.source, kc.content, kc.chunk_index,
-		       1 - (kc.embedding <=> ?) AS score
-		FROM knowledge_chunks kc
-		JOIN knowledge_documents kd ON kc.knowledge_doc_id = kd.id
-		WHERE kd.status = 'ready' AND kc.embedding IS NOT NULL`
-	args := []interface{}{vecStr}
-	if kbID > 0 {
-		sql += " AND kc.knowledge_base_id = ?"
-		args = append(args, kbID)
-	}
-	sql += " ORDER BY kc.embedding <=> ? LIMIT ?"
-	args = append(args, vecStr, topK)
-
-	rows, err := r.pgDB.WithContext(ctx).Raw(sql, args...).Rows()
+	// 调用 VectorStore 检索
+	results, err := r.vectorStore.Search(ctx, queryVec, kbID, topK)
 	if err != nil {
-		return nil, fmt.Errorf("pgvector query: %w", err)
+		return nil, fmt.Errorf("vector store search: %w", err)
 	}
-	defer rows.Close()
 
-	results := make([]RAGDocument, 0, topK)
-	for rows.Next() {
-		var doc RAGDocument
-		if err := rows.Scan(&doc.Title, &doc.Source, &doc.Content, &doc.ChunkIdx, &doc.Score); err != nil {
-			continue
-		}
-		// score 可能为负(余弦距离),归一化到 [0,1]
-		if doc.Score < 0 {
-			doc.Score = 0
-		}
-		doc.Content = truncate(doc.Content, 500)
-		results = append(results, doc)
+	// 转换为 RAGDocument(统一结构,供 RRF 融合和 Reranker 使用)
+	docs := make([]RAGDocument, 0, len(results))
+	for _, res := range results {
+		docs = append(docs, RAGDocument{
+			Title:    "", // VectorStore 不存标题,由上层 JOIN documents 补充(此处简化)
+			Content:  truncate(res.Content, 500),
+			Source:   "",
+			Score:    res.Score,
+			ChunkIdx: res.ChunkIndex,
+		})
 	}
-	return results, rows.Err()
+	return docs, nil
 }
 
 // vectorToPgString 将 float64 切片转为 pgvector 字符串格式 "[0.1,0.2,0.3]"
@@ -556,13 +562,21 @@ func (r *RAGService) IndexDocument(ctx context.Context, doc *models.KnowledgeDoc
 	}
 
 	// 2. 清理旧分块(若有)
+	// 同时清理 VectorStore 中该文档的旧向量(幂等)
 	if r.pgDB != nil {
 		r.pgDB.Where("knowledge_doc_id = ?", doc.ID).Delete(&models.KnowledgeChunk{})
 	}
+	if r.vectorStore != nil && r.vectorStore.Available() {
+		if err := r.vectorStore.DeleteByDoc(ctx, doc.ID); err != nil {
+			logger.Get().Warnf("vector store delete doc %d failed: %v", doc.ID, err)
+		}
+	}
 
-	// 3. 批量生成向量
+	// 3. 批量生成向量(一次性调用 Embedding API,降低延迟和成本)
+	// 仅当 VectorStore 可用时才生成向量,否则跳过节省 API 调用
 	var embeddings [][]float64
-	if r.pgDB != nil {
+	vecAvailable := r.vectorStore != nil && r.vectorStore.Available()
+	if vecAvailable {
 		emb, err := r.embedder.Embed(ctx, chunks)
 		if err != nil {
 			logger.Get().Warnf("embed chunks failed, storing without vectors: %v", err)
@@ -571,7 +585,10 @@ func (r *RAGService) IndexDocument(ctx context.Context, doc *models.KnowledgeDoc
 		}
 	}
 
-	// 4. 写入分块(优先写 PostgreSQL,降级写 MySQL)
+	// 4. 写入分块元数据(优先 PostgreSQL 以支持 BM25,降级 MySQL)
+	// VectorStore 可用时写 PostgreSQL(knowledge_chunks 表),否则降级 MySQL
+	// chunks 表同时承载 BM25 tsvector 列(PostgreSQL 触发器自动维护)
+	createdChunks := make([]models.KnowledgeChunk, 0, len(chunks))
 	for i, content := range chunks {
 		chunk := models.KnowledgeChunk{
 			KnowledgeBaseID: doc.KnowledgeBaseID,
@@ -586,26 +603,40 @@ func (r *RAGService) IndexDocument(ctx context.Context, doc *models.KnowledgeDoc
 				logger.Get().Warnf("create chunk %d failed: %v", i, err)
 				continue
 			}
-			// 写入 pgvector 列(原生 SQL)
-			if i < len(embeddings) && len(embeddings[i]) > 0 {
-				vecStr := vectorToPgString(embeddings[i])
-				err := r.pgDB.Exec(
-					"UPDATE knowledge_chunks SET embedding = ? WHERE id = ?",
-					vecStr, chunk.ID,
-				).Error
-				if err != nil {
-					logger.Get().Warnf("update chunk embedding %d failed: %v", chunk.ID, err)
-				}
-			}
 		} else {
-			// 降级:存 MySQL(无向量)
+			// 降级:存 MySQL(无向量、无 BM25)
 			if err := r.mysqlDB.Create(&chunk).Error; err != nil {
 				logger.Get().Warnf("create chunk %d (mysql) failed: %v", i, err)
+				continue
+			}
+		}
+		createdChunks = append(createdChunks, chunk)
+	}
+
+	// 5. 批量写入向量到 VectorStore(通过抽象接口,支持 pgvector/memory/milvus)
+	if vecAvailable && len(embeddings) > 0 {
+		records := make([]VectorRecord, 0, len(createdChunks))
+		for i, chunk := range createdChunks {
+			if i >= len(embeddings) || len(embeddings[i]) == 0 {
+				continue
+			}
+			records = append(records, VectorRecord{
+				ChunkID:    chunk.ID,
+				DocID:      doc.ID,
+				KBID:       doc.KnowledgeBaseID,
+				ChunkIndex: chunk.ChunkIndex,
+				Content:    chunk.Content,
+				Embedding:  embeddings[i],
+			})
+		}
+		if len(records) > 0 {
+			if err := r.vectorStore.UpsertVectors(ctx, records); err != nil {
+				logger.Get().Warnf("vector store upsert doc %d failed: %v", doc.ID, err)
 			}
 		}
 	}
 
-	// 5. 更新文档状态
+	// 6. 更新文档状态
 	doc.Status = "ready"
 	doc.ChunkCount = len(chunks)
 	if err := r.mysqlDB.Save(doc).Error; err != nil {
@@ -617,9 +648,136 @@ func (r *RAGService) IndexDocument(ctx context.Context, doc *models.KnowledgeDoc
 	middleware.RAGIndexDocsTotal.WithLabelValues("success").Inc()
 	middleware.RAGIndexChunks.Observe(float64(len(chunks)))
 
-	logger.Get().Infof("RAG indexed doc %d: %d chunks, %d embeddings",
-		doc.ID, len(chunks), len(embeddings))
+	logger.Get().Infof("RAG indexed doc %d: %d chunks, %d embeddings (store=%s)",
+		doc.ID, len(chunks), len(embeddings), r.VectorStoreName())
 	return nil
+}
+
+// BatchIndexResult 单文档批量入库结果
+type BatchIndexResult struct {
+	DocID      uint   // 文档 ID
+	ChunkCount int    // 生成的分块数
+	Success    bool   // 是否成功
+	Error      string // 失败原因(Success=true 时为空)
+}
+
+// BatchIndexDocuments 批量入库多个文档(知识库初始化/批量导入场景)
+// 相比循环调用 IndexDocument 的优化点:
+//  1. 合并所有 chunks 一次性调用 Embedding API,显著降低 API 调用次数和延迟
+//     (例如 10 文档 * 20 chunks = 200 chunks,单次调用 vs 10 次调用)
+//  2. 批量写入向量到 VectorStore(单次 UpsertVectors 调用,利用批量 UPDATE)
+//  3. 逐文档写入 chunks 元数据(保持事务边界清晰,单文档失败不影响其他)
+//
+// 注意:单次批量建议不超过 100 文档(避免 Embedding API 单次 token 限制)
+// 超大规模导入应分批调用,每批 50-100 文档
+func (r *RAGService) BatchIndexDocuments(ctx context.Context, docs []*models.KnowledgeDocument, cfg ChunkConfig) []BatchIndexResult {
+	results := make([]BatchIndexResult, 0, len(docs))
+	if len(docs) == 0 {
+		return results
+	}
+
+	vecAvailable := r.vectorStore != nil && r.vectorStore.Available()
+
+	// 1. 收集所有文档的分块(保留 doc 索引映射)
+	type docChunks struct {
+		docIdx int
+		chunks []string
+	}
+	allChunks := make([]string, 0, len(docs)*4)
+	docChunkMap := make([]docChunks, 0, len(docs))
+	for i, doc := range docs {
+		chunks := ChunkText(doc.Content, cfg)
+		docChunkMap = append(docChunkMap, docChunks{i, chunks})
+		allChunks = append(allChunks, chunks...)
+	}
+
+	// 2. 一次性批量生成所有 chunks 的向量(降低 API 调用次数)
+	var allEmbeddings [][]float64
+	if vecAvailable && len(allChunks) > 0 {
+		emb, err := r.embedder.Embed(ctx, allChunks)
+		if err != nil {
+			logger.Get().Warnf("batch embed failed, storing without vectors: %v", err)
+		} else {
+			allEmbeddings = emb
+		}
+	}
+
+	// 3. 逐文档写入 chunks 元数据 + 收集向量记录
+	embeddingOffset := 0
+	allRecords := make([]VectorRecord, 0, len(allChunks))
+	for _, dc := range docChunkMap {
+		doc := docs[dc.docIdx]
+		// 清理旧分块
+		if r.pgDB != nil {
+			r.pgDB.Where("knowledge_doc_id = ?", doc.ID).Delete(&models.KnowledgeChunk{})
+		}
+
+		// 写入新分块
+		for i, content := range dc.chunks {
+			chunk := models.KnowledgeChunk{
+				KnowledgeBaseID: doc.KnowledgeBaseID,
+				KnowledgeDocID:  doc.ID,
+				ChunkIndex:      i,
+				Content:         content,
+				TokenCount:      estimateTokens(content),
+				EmbeddingModel:  r.embedder.Name(),
+			}
+			if r.pgDB != nil {
+				if err := r.pgDB.Create(&chunk).Error; err != nil {
+					logger.Get().Warnf("batch create chunk doc=%d idx=%d failed: %v", doc.ID, i, err)
+					continue
+				}
+			} else if r.mysqlDB != nil {
+				if err := r.mysqlDB.Create(&chunk).Error; err != nil {
+					logger.Get().Warnf("batch create chunk (mysql) doc=%d idx=%d failed: %v", doc.ID, i, err)
+					continue
+				}
+			}
+
+			// 收集向量记录(对应 allChunks 中的位置)
+			if vecAvailable && embeddingOffset < len(allEmbeddings) && len(allEmbeddings[embeddingOffset]) > 0 {
+				allRecords = append(allRecords, VectorRecord{
+					ChunkID:    chunk.ID,
+					DocID:      doc.ID,
+					KBID:       doc.KnowledgeBaseID,
+					ChunkIndex: i,
+					Content:    content,
+					Embedding:  allEmbeddings[embeddingOffset],
+				})
+			}
+			embeddingOffset++
+		}
+
+		// 更新文档状态
+		doc.Status = "ready"
+		doc.ChunkCount = len(dc.chunks)
+		if r.mysqlDB != nil {
+			if err := r.mysqlDB.Save(doc).Error; err != nil {
+				logger.Get().Warnf("batch update doc %d status failed: %v", doc.ID, err)
+			}
+		}
+
+		middleware.RAGIndexDocsTotal.WithLabelValues("success").Inc()
+		middleware.RAGIndexChunks.Observe(float64(len(dc.chunks)))
+
+		results = append(results, BatchIndexResult{
+			DocID:      doc.ID,
+			ChunkCount: len(dc.chunks),
+			Success:    true,
+		})
+	}
+
+	// 4. 批量写入所有向量到 VectorStore(单次调用,利用 PgVectorStore 批量 UPDATE)
+	// InMemoryVectorStore 的 UpsertVectors 按 DocID 幂等覆盖,批量写入安全
+	if vecAvailable && len(allRecords) > 0 {
+		if err := r.vectorStore.UpsertVectors(ctx, allRecords); err != nil {
+			logger.Get().Warnf("batch vector upsert failed: %v", err)
+		}
+	}
+
+	logger.Get().Infof("RAG batch indexed %d docs: %d chunks, %d embeddings (store=%s)",
+		len(docs), len(allChunks), len(allRecords), r.VectorStoreName())
+	return results
 }
 
 // estimateTokens 粗略估算 token 数(中文按 1 字 1 token,英文按 4 字符 1 token)

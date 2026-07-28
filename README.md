@@ -40,6 +40,8 @@
 - **LLM Provider 抽象**：GLM / Claude / DeepSeek / Qwen / OpenAI 兼容协议，API Key 为空时自动回退 BuiltinLLMProvider（基于场景识别的结构化输出）
 - **Text2SQL**：自然语言 → SQL 生成 → SELECT 安全校验 → 执行 → 业务洞察生成
 - **RAG 检索**：pgvector 向量检索（余弦相似度）+ BM25 全文检索（PostgreSQL tsvector）+ TF-IDF 降级，三路混合检索 + RRF 融合（k=60）+ Reranker 重排序（cross-encoder API / 启发式降级）；Redis 检索结果缓存（FNV-1a hash key，TTL 1h）
+- **VectorStore 抽象层**：`VectorStore` 接口解耦 RAGService 与向量存储实现，支持 `PgVectorStore`（生产，批量 UPDATE...FROM VALUES 优化）与 `InMemoryVectorStore`（测试/本地开发，暴力余弦相似度）；可扩展 Milvus/Qdrant 等专用向量库
+- **批量入库**：`BatchIndexDocuments` 跨文档批量入库，合并所有 chunks 一次性调用 Embedding API + 单次 UpsertVectors 批量写入，显著降低 API 调用次数和 RTT
 - **RAG 多模态**：支持 PDF / Word(.docx) / Markdown / TXT 文件上传，自动解析为纯文本后分块入库（DocxParser 解析 XML、PDFParser 提取文本流）
 - **定时调度器**：后台 goroutine 每分钟扫描启用的工作流，支持 scheduled 触发
 - **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`；RAG 专用 `rag_search_duration_seconds` / `rag_search_score` / `rag_search_total` / `rag_fallback_total` / `rag_cache_hits_total` / `rag_rerank_duration_seconds` / `rag_rerank_total` / `rag_index_docs_total`
