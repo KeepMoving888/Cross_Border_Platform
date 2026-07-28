@@ -170,6 +170,12 @@ func main() {
 		if rdb := database.GetRedisSafe(); rdb != nil {
 			aiEngine.SetRedis(rdb)
 		}
+		// 微服务模式:AI Service 通过 HTTP 调用 RAG Service(而非进程内调用)
+		// 配置了 RAG_SERVICE_URL 时注入 RemoteRAGClient,实现服务解耦
+		if role == RoleAI && cfg.Service.RAGServiceURL != "" {
+			aiEngine.SetRAGSearcher(ai.NewRemoteRAGClient(cfg.Service.RAGServiceURL))
+			logger.Get().Infof("ai service: using remote rag client, target=%s", cfg.Service.RAGServiceURL)
+		}
 		scheduler := ai.NewScheduler(mysqlDB, aiEngine)
 		go scheduler.Start()
 		defer scheduler.Stop()

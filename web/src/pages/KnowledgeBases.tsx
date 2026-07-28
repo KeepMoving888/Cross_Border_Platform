@@ -37,6 +37,7 @@ import {
   Alert,
   Upload,
   Tabs,
+  Segmented,
 } from 'antd';
 import {
   DatabaseOutlined,
@@ -64,10 +65,12 @@ import {
   uploadDocumentFile,
   ragSearch,
   getRAGMetrics,
+  getRAGTrend,
 } from '@/api/ai';
-import type { RAGMetrics } from '@/api/ai';
+import type { RAGMetrics, RAGTrendData, MetricsTimeRange } from '@/api/ai';
 import { formatDateTime } from '@/utils/format';
 import type { KnowledgeBase, KnowledgeDocument, RAGDocument } from '@/types/api';
+import ReactECharts from 'echarts-for-react';
 
 const { Text, Paragraph } = Typography;
 
@@ -134,6 +137,11 @@ const KnowledgeBases: React.FC = () => {
   // RAG 监控指标
   const [ragMetrics, setRagMetrics] = useState<RAGMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
+
+  // RAG 趋势数据(时间序列)
+  const [trendData, setTrendData] = useState<RAGTrendData | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
 
   // ============== 数据加载 ==============
 
@@ -307,12 +315,27 @@ const KnowledgeBases: React.FC = () => {
     }
   }, []);
 
-  // 切换到监控 Tab 时自动加载
+  // 时间范围切换时重新加载趋势数据
+  const refreshTrend = useCallback(async (range?: MetricsTimeRange) => {
+    const r = range || timeRange;
+    setTrendLoading(true);
+    try {
+      const data = await getRAGTrend(r);
+      setTrendData(data);
+    } catch {
+      // 静默
+    } finally {
+      setTrendLoading(false);
+    }
+  }, [timeRange]);
+
+  // 切换到监控 Tab 或时间范围变化时自动加载
   useEffect(() => {
     if (activeTab === 'monitor') {
       refreshMetrics();
+      refreshTrend();
     }
-  }, [activeTab, refreshMetrics]);
+  }, [activeTab, refreshMetrics, refreshTrend]);
 
   // ============== 渲染辅助 ==============
 
@@ -695,7 +718,7 @@ const KnowledgeBases: React.FC = () => {
 
               {activeTab === 'monitor' && (
                 <Spin spinning={metricsLoading}>
-                  <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Alert
                       message="RAG 检索质量监控"
                       description="对接 Prometheus 实时指标,反映向量检索的健康状况。成功率 > 95% 为健康,缓存命中率 > 30% 为良好。"
@@ -703,10 +726,91 @@ const KnowledgeBases: React.FC = () => {
                       showIcon
                       style={{ flex: 1, marginRight: 16 }}
                     />
-                    <Button icon={<ReloadOutlined />} onClick={refreshMetrics}>
-                      刷新指标
-                    </Button>
+                    <Space>
+                      <Segmented
+                        size="small"
+                        value={timeRange}
+                        onChange={(v) => setTimeRange(v as MetricsTimeRange)}
+                        options={[
+                          { label: '5分钟', value: '5m' },
+                          { label: '1小时', value: '1h' },
+                          { label: '24小时', value: '24h' },
+                        ]}
+                      />
+                      <Button icon={<ReloadOutlined />} onClick={() => { refreshMetrics(); refreshTrend(); }}>
+                        刷新
+                      </Button>
+                    </Space>
                   </div>
+
+                  {/* ============== 趋势图 ============== */}
+                  <Spin spinning={trendLoading}>
+                    <Card size="small" title="检索趋势" style={{ marginBottom: 16 }}>
+                      {trendData && trendData.timestamps.length > 0 ? (
+                        <ReactECharts
+                          option={{
+                            tooltip: { trigger: 'axis' },
+                            legend: { data: ['检索成功率', '平均延迟(ms)', '每分钟检索数'] },
+                            grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                            xAxis: {
+                              type: 'category',
+                              data: trendData.timestamps.map((ts) => {
+                                const d = new Date(ts * 1000);
+                                return timeRange === '24h'
+                                  ? `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+                                  : `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+                              }),
+                              axisLabel: { fontSize: 11 },
+                            },
+                            yAxis: [
+                              { type: 'value', name: '成功率', min: 0, max: 1, axisLabel: { formatter: '{value}' } },
+                              { type: 'value', name: '延迟', axisLabel: { formatter: '{value}ms' } },
+                            ],
+                            series: [
+                              {
+                                name: '检索成功率',
+                                type: 'line',
+                                data: trendData.successRate,
+                                smooth: true,
+                                yAxisIndex: 0,
+                                itemStyle: { color: '#52c41a' },
+                                areaStyle: { color: 'rgba(82,196,26,0.1)' },
+                                markLine: {
+                                  silent: true,
+                                  data: [
+                                    { yAxis: 0.95, lineStyle: { color: '#52c41a', type: 'dashed' }, label: { formatter: '健康线 95%' } },
+                                    { yAxis: 0.80, lineStyle: { color: '#faad14', type: 'dashed' }, label: { formatter: '警戒线 80%' } },
+                                  ],
+                                },
+                              },
+                              {
+                                name: '平均延迟(ms)',
+                                type: 'line',
+                                data: trendData.avgDuration.map((v) => Math.round(v * 1000)),
+                                smooth: true,
+                                yAxisIndex: 1,
+                                itemStyle: { color: '#1677ff' },
+                              },
+                              {
+                                name: '每分钟检索数',
+                                type: 'bar',
+                                data: trendData.searchCount.map((v) => Math.round(v)),
+                                yAxisIndex: 1,
+                                itemStyle: { color: 'rgba(22,119,255,0.3)' },
+                              },
+                            ],
+                          }}
+                          style={{ height: 280 }}
+                        />
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="暂无趋势数据"
+                          style={{ padding: '24px 0' }}
+                        />
+                      )}
+                    </Card>
+                  </Spin>
 
                   {ragMetrics ? (
                     <div>

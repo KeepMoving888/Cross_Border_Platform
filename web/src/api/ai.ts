@@ -131,6 +131,18 @@ interface PrometheusResponse {
   };
 }
 
+/** Prometheus range 查询响应(时间序列) */
+interface PrometheusRangeResponse {
+  status: string;
+  data: {
+    resultType: string;
+    result: Array<{
+      metric: Record<string, string>;
+      values: Array<[number, string]>;
+    }>;
+  };
+}
+
 /** RAG 监控指标聚合 */
 export interface RAGMetrics {
   searchSuccessRate: number;      // 检索成功率 [0,1]
@@ -146,7 +158,19 @@ export interface RAGMetrics {
   }>;
 }
 
+/** RAG 趋势数据(时间序列) */
+export interface RAGTrendData {
+  timestamps: number[];           // 时间戳数组(Unix 秒)
+  successRate: number[];          // 检索成功率序列 [0,1]
+  avgDuration: number[];          // 平均延迟序列(秒)
+  searchCount: number[];          // 检索次数序列(区间增量)
+}
+
+/** 监控时间范围 */
+export type MetricsTimeRange = '5m' | '1h' | '24h';
+
 const PROMETHEUS_URL = '/prometheus/api/v1/query';
+const PROMETHEUS_RANGE_URL = '/prometheus/api/v1/query_range';
 
 /** 查询 Prometheus 单值指标 */
 async function queryPrometheus(query: string): Promise<number> {
@@ -172,6 +196,34 @@ async function queryPrometheusByLabel(query: string): Promise<Array<{ label: str
         label: r.metric.strategy || r.metric.status || 'unknown',
         value: parseFloat(r.value[1]) || 0,
       }));
+    }
+  } catch {
+    // 静默
+  }
+  return [];
+}
+
+/** 查询 Prometheus range 查询(时间序列) */
+async function queryPrometheusRange(
+  query: string,
+  range: MetricsTimeRange,
+): Promise<Array<[number, number]>> {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const rangeSeconds: Record<MetricsTimeRange, number> = { '5m': 300, '1h': 3600, '24h': 86400 };
+    const step: Record<MetricsTimeRange, number> = { '5m': 15, '1h': 60, '24h': 600 };
+    const start = now - rangeSeconds[range];
+
+    const params = new URLSearchParams({
+      query,
+      start: String(start),
+      end: String(now),
+      step: String(step[range]),
+    });
+    const resp = await fetch(`${PROMETHEUS_RANGE_URL}?${params.toString()}`);
+    const json: PrometheusRangeResponse = await resp.json();
+    if (json.status === 'success' && json.data.result.length > 0) {
+      return json.data.result[0].values.map(([ts, val]) => [ts, parseFloat(val) || 0]);
     }
   } catch {
     // 静默
@@ -212,5 +264,29 @@ export async function getRAGMetrics(): Promise<RAGMetrics> {
     rerankTotal: rerank,
     indexedDocs: indexed,
     strategyDistribution: strategyDist.map((s) => ({ strategy: s.label, count: s.value })),
+  };
+}
+
+/** 获取 RAG 趋势数据(时间序列,用于趋势图) */
+export async function getRAGTrend(range: MetricsTimeRange): Promise<RAGTrendData> {
+  const [successRateSeries, durationSeries, countSeries] = await Promise.all([
+    queryPrometheusRange(
+      'sum(rag_search_total{status="success"}) / sum(rag_search_total)',
+      range,
+    ),
+    queryPrometheusRange(
+      'avg(rag_search_duration_seconds_sum / rag_search_duration_seconds_count)',
+      range,
+    ),
+    queryPrometheusRange('sum(rate(rag_search_total[1m])) * 60', range),
+  ]);
+
+  const timestamps = successRateSeries.map(([ts]) => ts);
+
+  return {
+    timestamps,
+    successRate: successRateSeries.map(([, v]) => v),
+    avgDuration: durationSeries.map(([, v]) => v),
+    searchCount: countSeries.map(([, v]) => v),
   };
 }

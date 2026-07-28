@@ -164,10 +164,16 @@ func (n *LLMNode) Execute(ctx context.Context, input map[string]interface{}) (ma
 
 // ============== RAG 节点 ==============
 
+// RAGSearcher RAG 检索接口(解耦 RAGNode 与具体实现)
+// 进程内调用时使用 RAGService,微服务模式下使用 RemoteRAGClient(HTTP)
+type RAGSearcher interface {
+	Search(query string, knowledgeBaseID uint, topK int) ([]RAGDocument, error)
+}
+
 // RAGNode 检索增强生成节点
 type RAGNode struct {
 	def        NodeDefinition
-	ragService *RAGService
+	ragService RAGSearcher
 }
 
 func (n *RAGNode) Type() string { return "rag" }

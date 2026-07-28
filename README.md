@@ -43,8 +43,11 @@
 |---|---|---|---|
 | 单体 | 开发 / 小规模 | `docker compose up -d` | 单进程,所有路由本地处理 |
 | 微服务 | AI 负载重 / 需资源隔离 | `docker compose -f docker-compose-microservices.yml up -d` | 3 服务拆分:Gateway(8080) + AI(8081) + RAG(8082) |
+| K8s(备用) | 生产 / 高可用 / 多副本 | `helm upgrade -f values-prod.yaml cb-platform deployments/helm` | Phase 3 规划,见 [docs/k8s-deployment.md](docs/k8s-deployment.md) |
 
 微服务版通过环境变量 `AI_SERVICE_URL` / `RAG_SERVICE_URL` 启用反向代理,未配置时自动降级为单体模式。详见 [docs/microservices.md](docs/microservices.md)。
+
+> K8s 作为生产环境备用方案,在团队规模 > 10 人、需多环境隔离或高可用部署时启用,详见 [docs/k8s-deployment.md](docs/k8s-deployment.md)。
 
 ### 后端工程
 
@@ -58,7 +61,9 @@
 - **微服务部署**：支持单体（`docker-compose.yml`）和微服务（`docker-compose-microservices.yml`）两种部署模式，微服务版拆分 API Gateway + AI Service + RAG Service 3 个服务，实现资源隔离和独立扩展
 - **单一镜像多角色**：通过 `APP_ROLE` 环境变量（gateway/ai/rag）控制服务角色，同一二进制按角色裁剪初始化范围和路由注册，gateway 启动业务后台任务（对账/库存预警），ai 启动工作流调度器，rag 仅加载 VectorStore + Embedder
 - **API Gateway 反向代理**：`ProxyMiddleware` 基于 `httputil.ReverseProxy` 实现 8 条转发规则，按子路径精确匹配 AI/RAG 服务，JWT 透明转发，单体/微服务模式配置驱动切换
-- **RAG 监控仪表盘**：前端对接 Prometheus HTTP API，实时展示检索成功率/缓存命中率/平均延迟/策略分布，阈值变色预警
+- **AI Service → RAG Service HTTP 调用**：`RAGSearcher` 接口解耦 RAGNode 与检索实现，微服务模式下注入 `RemoteRAGClient`（HTTP 调用 RAG Service），单体模式使用进程内 `RAGService`，配置驱动切换
+- **全链路 TraceID 透传**：TraceID 中间件生成/复用 `X-Trace-Id` header，反向代理和 `RemoteRAGClient` 自动透传，实现 Gateway → AI Service → RAG Service 跨服务链路追踪，日志统一记录 `trace_id` 便于排障
+- **RAG 监控仪表盘**：前端对接 Prometheus HTTP API，实时展示检索成功率/缓存命中率/平均延迟/策略分布，支持 5min/1h/24h 时间范围切换，ECharts 趋势图含健康线/警戒线标记，阈值变色预警
 - **RAG 多模态**：支持 PDF / Word(.docx) / Markdown / TXT 文件上传，自动解析为纯文本后分块入库（DocxParser 解析 XML、PDFParser 提取文本流）
 - **定时调度器**：后台 goroutine 每分钟扫描启用的工作流，支持 scheduled 触发
 - **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`；RAG 专用 `rag_search_duration_seconds` / `rag_search_score` / `rag_search_total` / `rag_fallback_total` / `rag_cache_hits_total` / `rag_rerank_duration_seconds` / `rag_rerank_total` / `rag_index_docs_total`

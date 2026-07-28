@@ -1,5 +1,3 @@
-version: "3.9"
-
 # CB-Platform 微服务部署版
 # 拆分为 3 个服务:API Gateway + AI Service + RAG Service
 # 适用场景:AI 负载重、需要资源隔离和独立扩展
@@ -16,6 +14,9 @@ volumes:
   prometheus-data:
   grafana-data:
   app-logs:
+  milvus-data:
+  etcd-data:
+  minio-data:
 
 services:
   # ============== API Gateway(业务 CRUD + 认证 + 请求转发) ==============
@@ -351,8 +352,3 @@ services:
       - cb-net
     depends_on:
       - prometheus
-
-volumes:
-  milvus-data:
-  etcd-data:
-  minio-data:

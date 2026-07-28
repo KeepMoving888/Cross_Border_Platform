@@ -38,6 +38,7 @@ type Engine struct {
 	redis       *redis.Client // Redis(可选,用于 RAG 检索结果缓存)
 	llmProvider LLMProvider
 	embedder    EmbeddingProvider // Embedding 生成器
+	ragSearcher RAGSearcher       // RAG 检索器(进程内或远程 HTTP)
 	registry    map[string]NodeFactory
 	mu          sync.RWMutex
 }
@@ -83,6 +84,11 @@ func (e *Engine) SetEmbedder(p EmbeddingProvider) {
 	e.embedder = p
 }
 
+// SetRAGSearcher 设置 RAG 检索器(微服务模式下注入 RemoteRAGClient)
+func (e *Engine) SetRAGSearcher(s RAGSearcher) {
+	e.ragSearcher = s
+}
+
 // NodeFactory 节点工厂函数
 type NodeFactory func(def NodeDefinition) (Node, error)
 
@@ -125,6 +131,11 @@ func (e *Engine) registerDefaults() {
 		return &LLMNode{def: def, provider: e.llmProvider}, nil
 	}
 	e.registry["rag"] = func(def NodeDefinition) (Node, error) {
+		// 微服务模式:优先使用注入的 RemoteRAGClient(HTTP 调用 RAG Service)
+		// 单体模式:使用进程内 RAGService(向量检索 + 降级 TF-IDF)
+		if e.ragSearcher != nil {
+			return &RAGNode{def: def, ragService: e.ragSearcher}, nil
+		}
 		svc := NewRAGService(e.db, e.pgDB, config.Get().LLM)
 		svc.SetRedis(e.redis) // nil 时 RAGService 内部自动跳过缓存
 		return &RAGNode{def: def, ragService: svc}, nil
