@@ -21,24 +21,26 @@ import (
 const ragCacheTTL = time.Hour
 
 // RAGService RAG 检索服务
-// 优先使用 pgvector 语义检索,PostgreSQL 不可用时降级到 TF-IDF 关键词检索
-// Redis 可用时启用检索结果缓存,避免重复调 Embedding API
+// 检索链路: Redis 缓存 -> 向量+BM25 混合检索(RRF 融合) -> Reranker 重排序
+// 降级链路: 无 pgvector -> TF-IDF 关键词检索; 无 Rerank API -> 启发式重排
 type RAGService struct {
 	mysqlDB  *gorm.DB          // MySQL(存储文档元数据,必须)
 	pgDB     *gorm.DB          // PostgreSQL + pgvector(可选,用于向量检索)
 	embedder EmbeddingProvider // Embedding 生成器
+	reranker RerankerProvider  // Reranker 重排序器(可选,nil 时跳过重排)
 	redis    *redis.Client     // Redis 缓存(可选,nil 时跳过缓存)
 }
 
 // NewRAGService 创建 RAG 服务
 // mysqlDB: 业务数据库(必须)
 // pgDB: 向量数据库(可选,nil 时降级到 TF-IDF)
-// cfg: LLM 配置(决定 Embedding provider)
+// cfg: LLM 配置(决定 Embedding 和 Reranker provider)
 func NewRAGService(mysqlDB *gorm.DB, pgDB *gorm.DB, cfg config.LLMConfig) *RAGService {
 	return &RAGService{
 		mysqlDB:  mysqlDB,
 		pgDB:     pgDB,
 		embedder: NewEmbeddingProvider(cfg),
+		reranker: NewRerankerProvider(cfg),
 		redis:    nil, // 默认不开缓存,由 SetRedis 注入
 	}
 }
@@ -46,6 +48,11 @@ func NewRAGService(mysqlDB *gorm.DB, pgDB *gorm.DB, cfg config.LLMConfig) *RAGSe
 // SetRedis 注入 Redis 客户端以启用检索结果缓存
 func (r *RAGService) SetRedis(client *redis.Client) {
 	r.redis = client
+}
+
+// SetReranker 注入自定义 Reranker(用于测试或运行时切换)
+func (r *RAGService) SetReranker(p RerankerProvider) {
+	r.reranker = p
 }
 
 // RAGDocument RAG 检索结果
@@ -58,8 +65,9 @@ type RAGDocument struct {
 }
 
 // Search 检索知识库
-// 优先查 Redis 缓存 -> pgvector 语义检索 -> TF-IDF 关键词检索
-// 全程埋点 Prometheus 指标:延迟/分数/降级/缓存命中
+// 链路: Redis 缓存 -> 混合检索(向量 top-N + BM25 top-N -> RRF 融合) -> Reranker 重排 -> top-K
+// 降级: 无 pgvector -> TF-IDF; 无 Rerank API -> 启发式重排
+// 全程埋点 Prometheus 指标:延迟/分数/策略/降级/缓存命中/重排延迟
 func (r *RAGService) Search(query string, knowledgeBaseID uint, topK int) ([]RAGDocument, error) {
 	if topK <= 0 {
 		topK = 5
@@ -78,51 +86,110 @@ func (r *RAGService) Search(query string, knowledgeBaseID uint, topK int) ([]RAG
 		return cached, nil
 	}
 
-	// 2. 优先向量检索
+	// 2. 混合检索:向量 + BM25 并行召回,RRF 融合
+	// 召回窗口扩大到 topK*4,给 reranker 更多候选
+	recallN := topK * 4
+	if recallN < 20 {
+		recallN = 20
+	}
+
 	strategy := "tfidf"
+	var finalDocs []RAGDocument
+
 	if r.pgDB != nil {
-		docs, err := r.vectorSearch(context.Background(), query, knowledgeBaseID, topK)
-		if err != nil {
+		// 2a. 向量检索 + BM25 检索并行
+		var (
+			vecDocs []RAGDocument
+			bmDocs  []RAGDocument
+			vecErr  error
+		)
+		vecDocs, vecErr = r.vectorSearch(context.Background(), query, knowledgeBaseID, recallN)
+		if vecErr != nil {
 			reason := "query_failed"
-			if strings.Contains(err.Error(), "embed") {
+			if strings.Contains(vecErr.Error(), "embed") {
 				reason = "embed_failed"
 			}
 			middleware.RAGFallbackTotal.WithLabelValues(reason).Inc()
-			logger.Get().Warnf("vector search failed, fallback to TF-IDF: %v", err)
-		} else if len(docs) > 0 {
+			logger.Get().Warnf("vector search failed: %v", vecErr)
+		}
+		// BM25 检索(基于 PostgreSQL tsvector,失败静默)
+		bmDocs, _ = r.bm25Search(context.Background(), query, knowledgeBaseID, recallN)
+
+		// 2b. RRF 融合(两路都有结果时融合,单路时直接用)
+		if len(vecDocs) > 0 && len(bmDocs) > 0 {
+			finalDocs = RRFusion([][]RAGDocument{vecDocs, bmDocs}, DefaultRRFParams(), recallN)
+			strategy = "hybrid"
+		} else if len(vecDocs) > 0 {
+			finalDocs = vecDocs
 			strategy = "vector"
-			middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
-			middleware.RAGSearchTotal.WithLabelValues(strategy, "success").Inc()
-			if docs[0].Score > 0 {
-				middleware.RAGSearchScore.WithLabelValues(strategy).Observe(docs[0].Score)
-			}
-			r.setCache(query, knowledgeBaseID, topK, docs)
-			return docs, nil
-		} else {
+		} else if len(bmDocs) > 0 {
+			finalDocs = bmDocs
+			strategy = "bm25"
+		}
+
+		if len(finalDocs) == 0 {
 			middleware.RAGFallbackTotal.WithLabelValues("no_results").Inc()
+			// 继续走 TF-IDF 降级
 		}
 	} else {
 		middleware.RAGFallbackTotal.WithLabelValues("pg_unavailable").Inc()
 	}
 
-	// 3. 降级:TF-IDF 关键词检索
-	docs, err := r.tfidfSearch(query, knowledgeBaseID, topK)
-	if err != nil {
-		middleware.RAGSearchTotal.WithLabelValues(strategy, "failed").Inc()
-		middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
-		return nil, err
-	}
-	if len(docs) == 0 {
-		middleware.RAGSearchTotal.WithLabelValues(strategy, "empty").Inc()
-	} else {
-		middleware.RAGSearchTotal.WithLabelValues(strategy, "success").Inc()
-		if docs[0].Score > 0 {
-			middleware.RAGSearchScore.WithLabelValues(strategy).Observe(docs[0].Score)
+	// 3. 降级:TF-IDF 关键词检索(无 pgvector 或混合检索无结果时)
+	if len(finalDocs) == 0 {
+		docs, err := r.tfidfSearch(query, knowledgeBaseID, topK)
+		if err != nil {
+			middleware.RAGSearchTotal.WithLabelValues(strategy, "failed").Inc()
+			middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
+			return nil, err
 		}
-		r.setCache(query, knowledgeBaseID, topK, docs)
+		finalDocs = docs
 	}
+
+	if len(finalDocs) == 0 {
+		middleware.RAGSearchTotal.WithLabelValues(strategy, "empty").Inc()
+		middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
+		return finalDocs, nil
+	}
+
+	// 4. Reranker 重排序(可选,提升精度)
+	// reranker 为 nil 或不可用时跳过,保持原排序
+	if r.reranker != nil && r.reranker.Available() {
+		rerankStart := time.Now()
+		reranked, err := r.reranker.Rerank(context.Background(), query, finalDocs, topK)
+		middleware.RAGRerankDuration.Observe(time.Since(rerankStart).Seconds())
+		if err != nil {
+			middleware.RAGRerankTotal.WithLabelValues("failed").Inc()
+			logger.Get().Warnf("rerank failed, use original order: %v", err)
+		} else {
+			middleware.RAGRerankTotal.WithLabelValues("success").Inc()
+			finalDocs = reranked
+		}
+	} else if r.reranker != nil {
+		// HeuristicRerankerProvider 始终可用,走启发式重排
+		rerankStart := time.Now()
+		reranked, err := r.reranker.Rerank(context.Background(), query, finalDocs, topK)
+		middleware.RAGRerankDuration.Observe(time.Since(rerankStart).Seconds())
+		if err == nil {
+			middleware.RAGRerankTotal.WithLabelValues("heuristic").Inc()
+			finalDocs = reranked
+		}
+	}
+
+	// 5. 截断到 topK(reranker 可能已截断,这里兜底)
+	if topK > 0 && len(finalDocs) > topK {
+		finalDocs = finalDocs[:topK]
+	}
+
+	// 6. 指标埋点 + 缓存
+	middleware.RAGSearchTotal.WithLabelValues(strategy, "success").Inc()
 	middleware.RAGSearchDuration.WithLabelValues(strategy).Observe(time.Since(start).Seconds())
-	return docs, nil
+	if finalDocs[0].Score > 0 {
+		middleware.RAGSearchScore.WithLabelValues(strategy).Observe(finalDocs[0].Score)
+	}
+	r.setCache(query, knowledgeBaseID, topK, finalDocs)
+
+	return finalDocs, nil
 }
 
 // ============== Redis 检索缓存 ==============
@@ -272,6 +339,88 @@ func vectorToPgString(vec []float64) string {
 	}
 	sb.WriteByte(']')
 	return sb.String()
+}
+
+// ============== BM25 全文检索(PostgreSQL tsvector) ==============
+
+// bm25Search 使用 PostgreSQL tsvector/ts_rank 进行 BM25 风格全文检索
+// 与向量检索互补:向量擅长语义近似,BM25 擅长精确关键词(型号/SKU/数字)匹配
+// 需要 knowledge_chunks 表有 content_tsv 列(tsvector),由迁移脚本创建
+func (r *RAGService) bm25Search(ctx context.Context, query string, kbID uint, topK int) ([]RAGDocument, error) {
+	if r.pgDB == nil {
+		return nil, fmt.Errorf("pgvector not available")
+	}
+
+	// 构造 tsquery:支持多词 OR 匹配(任一命中即召回)
+	tsquery := buildTSQuery(query)
+	if tsquery == "" {
+		return nil, nil
+	}
+
+	// SQL: 使用 ts_rank_cd 按相关度排名
+	// ts_rank_cd 计算覆盖密度,比 ts_rank 更精确
+	sql := `
+		SELECT kd.title, kd.source, kc.content, kc.chunk_index,
+		       ts_rank_cd(kc.content_tsv, to_tsquery(?)) AS score
+		FROM knowledge_chunks kc
+		JOIN knowledge_documents kd ON kc.knowledge_doc_id = kd.id
+		WHERE kd.status = 'ready'
+		  AND kc.content_tsv @@ to_tsquery(?)
+		  AND kc.content IS NOT NULL`
+	args := []interface{}{tsquery, tsquery}
+	if kbID > 0 {
+		sql += " AND kc.knowledge_base_id = ?"
+		args = append(args, kbID)
+	}
+	sql += " ORDER BY score DESC LIMIT ?"
+	args = append(args, topK)
+
+	rows, err := r.pgDB.WithContext(ctx).Raw(sql, args...).Rows()
+	if err != nil {
+		// content_tsv 列可能不存在(迁移未执行),静默降级
+		logger.Get().Warnf("bm25 search failed (column may not exist): %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make([]RAGDocument, 0, topK)
+	for rows.Next() {
+		var doc RAGDocument
+		if err := rows.Scan(&doc.Title, &doc.Source, &doc.Content, &doc.ChunkIdx, &doc.Score); err != nil {
+			continue
+		}
+		// ts_rank_cd 分数范围较大,归一化到 [0,1](经验值,除以 0.1)
+		doc.Score = math.Min(doc.Score/0.1, 1.0)
+		if doc.Score < 0 {
+			doc.Score = 0
+		}
+		doc.Content = truncate(doc.Content, 500)
+		results = append(results, doc)
+	}
+	return results, rows.Err()
+}
+
+// buildTSQuery 将自然语言 query 转为 PostgreSQL tsquery 格式
+// "负离子吹风机" -> "负 & 离子 & 吹风机"(中文按字分词,英文按词)
+// 使用 & (AND) 提高精确度,无结果时上游会自动降级
+func buildTSQuery(query string) string {
+	tokens := tokenize(query)
+	if len(tokens) == 0 {
+		return ""
+	}
+	// 过滤过短 token 并转义特殊字符
+	var parts []string
+	for _, tk := range tokens {
+		tk = strings.TrimSpace(tk)
+		if len(tk) < 1 {
+			continue
+		}
+		parts = append(parts, tk)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " & ")
 }
 
 // ============== TF-IDF 降级检索 ==============

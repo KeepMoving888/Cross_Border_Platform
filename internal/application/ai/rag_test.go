@@ -359,3 +359,231 @@ func TestRAGService_Search_NoDB(t *testing.T) {
 		t.Error("expected error when all DBs are nil")
 	}
 }
+
+// ============== Reranker 测试 ==============
+
+func TestNewRerankerProvider_NoAPIKey(t *testing.T) {
+	// 无 API Key 时应降级到启发式 reranker
+	p := NewRerankerProvider(config.LLMConfig{})
+	if p.Name() != "heuristic-reranker" {
+		t.Errorf("expected heuristic-reranker, got %s", p.Name())
+	}
+	if !p.Available() {
+		t.Error("heuristic reranker should always be available")
+	}
+}
+
+func TestNewRerankerProvider_WithAPIKey(t *testing.T) {
+	// 有 API Key 时应使用 API reranker
+	p := NewRerankerProvider(config.LLMConfig{Provider: "jina", APIKey: "test-key"})
+	if p.Name() != "api-reranker" {
+		t.Errorf("expected api-reranker, got %s", p.Name())
+	}
+}
+
+func TestNewRerankerProvider_OpenAI_NoRerankModel(t *testing.T) {
+	// OpenAI 无 rerank 接口,Available 应返回 false(运行时降级到启发式)
+	p := NewRerankerProvider(config.LLMConfig{Provider: "openai", APIKey: "test-key"})
+	if p.Available() {
+		t.Error("openai reranker should not be available")
+	}
+}
+
+func TestChooseRerankerModel(t *testing.T) {
+	tests := []struct {
+		provider string
+		expectNE bool // 是否期望非空
+	}{
+		{"jina", true},
+		{"cohere", true},
+		{"bge", true},
+		{"openai", false},
+		{"glm", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		cfg := config.LLMConfig{Provider: tt.provider}
+		model := chooseRerankerModel(cfg)
+		if tt.expectNE && model == "" {
+			t.Errorf("provider=%s: expected non-empty model", tt.provider)
+		}
+		if !tt.expectNE && model != "" {
+			t.Errorf("provider=%s: expected empty model, got %s", tt.provider, model)
+		}
+	}
+}
+
+func TestHeuristicReranker_EmptyDocs(t *testing.T) {
+	p := &HeuristicRerankerProvider{}
+	result, err := p.Rerank(context.Background(), "query", nil, 5)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Error("expected empty result for empty docs")
+	}
+}
+
+func TestHeuristicReranker_ReorderByRelevance(t *testing.T) {
+	// 文档 B 包含 query 关键词,文档 A 不包含
+	// 初始 A 排在前面(向量分高),重排后 B 应排在前面(关键词命中)
+	docs := []RAGDocument{
+		{Title: "doc-a", Content: "完全无关的内容", Score: 0.9},
+		{Title: "doc-b", Content: "负离子吹风机的使用方法", Score: 0.7},
+	}
+	p := &HeuristicRerankerProvider{}
+	result, err := p.Rerank(context.Background(), "负离子吹风机", docs, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 docs, got %d", len(result))
+	}
+	// doc-b 应排在前面(关键词覆盖率高)
+	if result[0].Title != "doc-b" {
+		t.Errorf("expected doc-b first after rerank, got %s", result[0].Title)
+	}
+}
+
+func TestHeuristicReranker_TopK(t *testing.T) {
+	docs := []RAGDocument{
+		{Title: "a", Content: "test content one", Score: 0.8},
+		{Title: "b", Content: "test content two", Score: 0.7},
+		{Title: "c", Content: "test content three", Score: 0.6},
+	}
+	p := &HeuristicRerankerProvider{}
+	result, _ := p.Rerank(context.Background(), "test", docs, 2)
+	if len(result) != 2 {
+		t.Errorf("expected 2 docs after topK=2, got %d", len(result))
+	}
+}
+
+func TestHeuristicReranker_TitleBonus(t *testing.T) {
+	// 标题命中应比仅正文命中得分更高
+	docs := []RAGDocument{
+		{Title: "generic title", Content: "负离子吹风机", Score: 0.5},
+		{Title: "负离子吹风机指南", Content: "generic content", Score: 0.5},
+	}
+	p := &HeuristicRerankerProvider{}
+	result, _ := p.Rerank(context.Background(), "负离子吹风机", docs, 2)
+	if result[0].Title != "负离子吹风机指南" {
+		t.Errorf("expected title-hit doc first, got %s", result[0].Title)
+	}
+}
+
+func TestHeuristicScore_NoKeywords(t *testing.T) {
+	p := &HeuristicRerankerProvider{}
+	score := p.heuristicScore("query", nil, RAGDocument{Title: "t", Content: "c"})
+	if score != 0 {
+		t.Error("expected 0 score for empty keyword set")
+	}
+}
+
+func TestAPIReranker_UnavailableFallbackToHeuristic(t *testing.T) {
+	// APIRerankerProvider.Available()=false 时应降级到启发式
+	p := &APIRerankerProvider{apiKey: "key", model: ""} // model 空 -> unavailable
+	if p.Available() {
+		t.Error("expected unavailable when model is empty")
+	}
+	docs := []RAGDocument{
+		{Title: "a", Content: "test doc", Score: 0.5},
+	}
+	result, err := p.Rerank(context.Background(), "test", docs, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 doc, got %d", len(result))
+	}
+}
+
+// ============== RRF 融合测试 ==============
+
+func TestRRFusion_EmptyInput(t *testing.T) {
+	result := RRFusion(nil, DefaultRRFParams(), 5)
+	if len(result) != 0 {
+		t.Error("expected empty result for empty input")
+	}
+}
+
+func TestRRFusion_SingleRanking(t *testing.T) {
+	ranking := []RAGDocument{
+		{Title: "a", Content: "content-a", Score: 0.9},
+		{Title: "b", Content: "content-b", Score: 0.7},
+	}
+	result := RRFusion([][]RAGDocument{ranking}, DefaultRRFParams(), 2)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 docs, got %d", len(result))
+	}
+	// 单路输入应保持原顺序
+	if result[0].Title != "a" {
+		t.Error("expected doc-a first for single ranking")
+	}
+}
+
+func TestRRFusion_MergeDuplicates(t *testing.T) {
+	// 同一文档被两路召回,应合并并累加 RRF 分数
+	ranking1 := []RAGDocument{
+		{Title: "shared", Content: "shared-content", Score: 0.9},
+		{Title: "only-a", Content: "only-a-content", Score: 0.7},
+	}
+	ranking2 := []RAGDocument{
+		{Title: "shared", Content: "shared-content", Score: 0.8},
+		{Title: "only-b", Content: "only-b-content", Score: 0.6},
+	}
+	result := RRFusion([][]RAGDocument{ranking1, ranking2}, DefaultRRFParams(), 5)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 unique docs, got %d", len(result))
+	}
+	// shared 在两路都排第一,RRF 分数最高,应排首位
+	if result[0].Title != "shared" {
+		t.Errorf("expected shared doc first, got %s", result[0].Title)
+	}
+}
+
+func TestRRFusion_TopK(t *testing.T) {
+	ranking := []RAGDocument{
+		{Title: "a", Content: "c-a", Score: 0.9},
+		{Title: "b", Content: "c-b", Score: 0.8},
+		{Title: "c", Content: "c-c", Score: 0.7},
+	}
+	result := RRFusion([][]RAGDocument{ranking}, DefaultRRFParams(), 2)
+	if len(result) != 2 {
+		t.Errorf("expected 2 docs after topK=2, got %d", len(result))
+	}
+}
+
+func TestRRFusion_DefaultParamsWhenZero(t *testing.T) {
+	// K=0 应自动使用默认值 60
+	ranking := []RAGDocument{
+		{Title: "a", Content: "c-a", Score: 0.9},
+	}
+	result := RRFusion([][]RAGDocument{ranking}, RRFParams{K: 0}, 5)
+	if len(result) != 1 {
+		t.Error("expected 1 doc with default params")
+	}
+}
+
+func TestBuildTSQuery_Empty(t *testing.T) {
+	if buildTSQuery("") != "" {
+		t.Error("expected empty tsquery for empty query")
+	}
+}
+
+func TestBuildTSQuery_Chinese(t *testing.T) {
+	q := buildTSQuery("负离子吹风机")
+	if q == "" {
+		t.Error("expected non-empty tsquery for Chinese query")
+	}
+	// 应包含 & 连接符
+	if !strings.Contains(q, "&") {
+		t.Error("expected & separator in tsquery")
+	}
+}
+
+func TestBuildTSQuery_English(t *testing.T) {
+	q := buildTSQuery("hair dryer product")
+	if q == "" {
+		t.Error("expected non-empty tsquery for English query")
+	}
+}

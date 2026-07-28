@@ -85,9 +85,52 @@ func InitPostgres(cfg config.PGConfig) (*gorm.DB, error) {
 	defer cancel()
 	_ = db.WithContext(ctx).Exec("CREATE EXTENSION IF NOT EXISTS vector").Error
 
+	// 为 knowledge_chunks 添加 BM25 全文检索列(tsvector)+ GIN 索引
+	// 与向量检索互补:向量擅长语义近似,tsvector 擅长精确关键词(型号/SKU)匹配
+	// 使用 simple 配置避免英文词干提取干扰中文匹配
+	setupBM25Search(ctx, db)
+
 	pgDB = db
 	logger.Get().Infow("postgres connected", "host", cfg.Host, "port", cfg.Port, "db", cfg.DB)
 	return db, nil
+}
+
+// setupBM25Search 在 PostgreSQL 上创建 BM25 全文检索所需的列和索引
+// 幂等操作:列/索引已存在时静默跳过
+func setupBM25Search(ctx context.Context, db *gorm.DB) {
+	// 1. 添加 content_tsv 列(tsvector 类型)
+	_ = db.WithContext(ctx).Exec(
+		"ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_tsv tsvector",
+	).Error
+
+	// 2. 填充已有数据的 content_tsv(对存量分块建全文索引)
+	_ = db.WithContext(ctx).Exec(
+		"UPDATE knowledge_chunks SET content_tsv = to_tsvector('simple', coalesce(content, '')) WHERE content_tsv IS NULL",
+	).Error
+
+	// 3. 创建 GIN 索引(加速 @@ tsquery 查询)
+	_ = db.WithContext(ctx).Exec(
+		"CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_content_tsv ON knowledge_chunks USING GIN (content_tsv)",
+	).Error
+
+	// 4. 创建触发器:插入/更新 content 时自动维护 content_tsv
+	// 避免应用层手动维护,保证全文索引与内容一致
+	_ = db.WithContext(ctx).Exec(`
+		CREATE OR REPLACE FUNCTION knowledge_chunks_tsv_trigger() RETURNS trigger AS $$
+		BEGIN
+			NEW.content_tsv := to_tsvector('simple', coalesce(NEW.content, ''));
+			RETURN NEW;
+		END;
+		$$ LANGUAGE plpgsql
+	`).Error
+	_ = db.WithContext(ctx).Exec(`
+		DROP TRIGGER IF EXISTS trg_knowledge_chunks_tsv ON knowledge_chunks
+	`).Error
+	_ = db.WithContext(ctx).Exec(`
+		CREATE TRIGGER trg_knowledge_chunks_tsv
+		BEFORE INSERT OR UPDATE ON knowledge_chunks
+		FOR EACH ROW EXECUTE FUNCTION knowledge_chunks_tsv_trigger()
+	`).Error
 }
 
 // InitRedis 初始化 Redis

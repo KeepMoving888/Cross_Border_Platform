@@ -127,6 +127,24 @@ var (
 			Buckets: []float64{1, 2, 5, 10, 20, 50, 100, 200},
 		},
 	)
+
+	// RAG Reranker 指标
+	// 反映重排序延迟与成功率,标签 strategy: api(调用外部API)/heuristic(本地启发式)/failed
+	RAGRerankDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "rag_rerank_duration_seconds",
+			Help:    "RAG rerank duration in seconds (cross-encoder or heuristic)",
+			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5},
+		},
+	)
+
+	RAGRerankTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rag_rerank_total",
+			Help: "Total number of RAG rerank operations, labeled by strategy",
+		},
+		[]string{"strategy"}, // strategy: success(API) | heuristic | failed
+	)
 )
 
 // Metrics Prometheus 指标采集中间件

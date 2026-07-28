@@ -3,7 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cb-platform/internal/application/ai"
 	"github.com/cb-platform/internal/domain/models"
@@ -437,6 +441,94 @@ func (h *AIHandler) ListDocuments(c *gin.Context) {
 	var list []models.KnowledgeDocument
 	h.db.Where("knowledge_base_id = ?", kbID).Order("id DESC").Find(&list)
 	response.OK(c, list)
+}
+
+// UploadDocumentFile 文件上传接口(支持 PDF / Word / Markdown / 纯文本)
+// multipart/form-data: file 字段为文件,可选 title 字段覆盖文件名
+// 后端解析文件内容为纯文本,再走异步分块+向量化入库流程
+func (h *AIHandler) UploadDocumentFile(c *gin.Context) {
+	kbID, _ := strconv.Atoi(c.Param("id"))
+
+	// 限制文件大小 10MB
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		response.Fail(c, errors.Wrap(err, 1001, "文件解析失败(最大 10MB)"))
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		response.Fail(c, errors.Wrap(err, 1001, "请上传 file 字段"))
+		return
+	}
+	defer file.Close()
+
+	// 校验文件类型
+	filename := header.Filename
+	if !ai.IsSupportedFile(filename) {
+		response.Fail(c, errors.New(1001, "不支持的文件类型,支持: txt/md/pdf/docx"))
+		return
+	}
+
+	// 读取文件内容
+	data, err := io.ReadAll(file)
+	if err != nil {
+		response.Fail(c, errors.Wrap(err, 9002, "读取文件失败"))
+		return
+	}
+
+	// 解析文档为纯文本
+	content, err := ai.ParseDocument(data, filename)
+	if err != nil {
+		response.Fail(c, errors.Wrap(err, 9002, fmt.Sprintf("文档解析失败: %v", err)))
+		return
+	}
+
+	if len(strings.TrimSpace(content)) == 0 {
+		response.Fail(c, errors.New(1001, "文档内容为空,无法入库"))
+		return
+	}
+
+	// 标题:优先用表单 title 字段,否则用文件名(去扩展名)
+	title := c.PostForm("title")
+	if title == "" {
+		title = strings.TrimSuffix(filename, filepath.Ext(filename))
+	}
+
+	doc := models.KnowledgeDocument{
+		KnowledgeBaseID: uint(kbID),
+		Title:           title,
+		Source:          filename,
+		Content:         content,
+		ChunkCount:      0,
+		Status:          "processing",
+	}
+	if err := h.db.Create(&doc).Error; err != nil {
+		response.Fail(c, errors.ErrDBOperation)
+		return
+	}
+	h.db.Model(&models.KnowledgeBase{}).Where("id = ?", kbID).
+		UpdateColumn("document_count", gorm.Expr("document_count + 1"))
+
+	// 异步分块 + 向量化入库
+	go func(docID uint) {
+		ragService := ai.NewRAGService(h.db, database.GetPostgres(), config.Get().LLM)
+		if rdb := database.GetRedisSafe(); rdb != nil {
+			ragService.SetRedis(rdb)
+		}
+		var d models.KnowledgeDocument
+		if err := h.db.First(&d, docID).Error; err != nil {
+			logger.Get().Errorf("load document %d failed: %v", docID, err)
+			return
+		}
+		if err := ragService.IndexDocument(context.Background(), &d, ai.DefaultChunkConfig()); err != nil {
+			logger.Get().Errorf("index document %d failed: %v", docID, err)
+			d.Status = "failed"
+			d.Error = err.Error()
+			h.db.Save(&d)
+		}
+	}(doc.ID)
+
+	response.OKWithMsg(c, fmt.Sprintf("文件 %s 解析成功,正在分块向量化", filename), doc)
 }
 
 // ============== 业务场景直调 ==============

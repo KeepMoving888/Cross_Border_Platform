@@ -235,6 +235,7 @@ func registerRoutes(r *gin.Engine, db *gorm.DB) {
 				ai.GET("/knowledge-bases", h.ListKnowledgeBases)
 				ai.POST("/knowledge-bases", middleware.RequireRole("admin"), h.CreateKnowledgeBase)
 				ai.POST("/knowledge-bases/:id/documents", middleware.RequireRole("admin", "manager"), h.UploadDocument)
+				ai.POST("/knowledge-bases/:id/documents/upload", middleware.RequireRole("admin", "manager"), h.UploadDocumentFile)
 				ai.GET("/knowledge-bases/:id/documents", h.ListDocuments)
 				ai.POST("/analyze/product", h.AnalyzeProduct)
 				ai.POST("/generate/listing", h.GenerateListing)

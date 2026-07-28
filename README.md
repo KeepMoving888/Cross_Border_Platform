@@ -39,9 +39,10 @@
 - **AI 工作流引擎**：DAG 拓扑执行，支持 input → llm/rag/text2sql/sql_execute/condition → output 节点链路
 - **LLM Provider 抽象**：GLM / Claude / DeepSeek / Qwen / OpenAI 兼容协议，API Key 为空时自动回退 BuiltinLLMProvider（基于场景识别的结构化输出）
 - **Text2SQL**：自然语言 → SQL 生成 → SELECT 安全校验 → 执行 → 业务洞察生成
-- **RAG 检索**：pgvector 向量检索（余弦相似度）+ TF-IDF 降级，支持文档分块+Embedding 入库+语义检索+上下文注入；Redis 检索结果缓存（FNV-1a hash key，TTL 1h，命中跳过 Embedding API 调用）
+- **RAG 检索**：pgvector 向量检索（余弦相似度）+ BM25 全文检索（PostgreSQL tsvector）+ TF-IDF 降级，三路混合检索 + RRF 融合（k=60）+ Reranker 重排序（cross-encoder API / 启发式降级）；Redis 检索结果缓存（FNV-1a hash key，TTL 1h）
+- **RAG 多模态**：支持 PDF / Word(.docx) / Markdown / TXT 文件上传，自动解析为纯文本后分块入库（DocxParser 解析 XML、PDFParser 提取文本流）
 - **定时调度器**：后台 goroutine 每分钟扫描启用的工作流，支持 scheduled 触发
-- **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`；RAG 专用 `rag_search_duration_seconds` / `rag_search_score` / `rag_search_total` / `rag_fallback_total` / `rag_cache_hits_total` / `rag_index_docs_total`
+- **Prometheus 指标**：`ai_workflow_runs_total` / `ai_workflow_duration_seconds` / `ai_workflow_tokens_total` / `ai_workflow_cost_usd`；RAG 专用 `rag_search_duration_seconds` / `rag_search_score` / `rag_search_total` / `rag_fallback_total` / `rag_cache_hits_total` / `rag_rerank_duration_seconds` / `rag_rerank_total` / `rag_index_docs_total`
 
 ### 前端工程
 
@@ -61,7 +62,7 @@
 | 库存管理 | 多仓覆盖（深圳主仓/美西/欧洲/FBA）、安全库存预警、库存变动流水 |
 | 财务管理 | 账单对账、利润报表（每日 SKU 级收入/成本/净利润）、趋势分析 |
 | AI 工作流 | 5 个预置场景、工作流历史记录、趋势图、Token/成本统计 |
-| 知识库 | RAG 向量检索、文档分块+向量化入库、状态轮询、检索测试与相似度可视化 |
+| 知识库 | RAG 混合检索(向量+BM25+RRF)、Reranker 重排序、多模态文档上传(PDF/Word/MD)、状态轮询、检索测试与相似度可视化 |
 | 客服消息 | 多平台消息聚合、AI 回复建议、意图识别、多语言支持 |
 | 工作流编排 | 可视化拖拽编排、7 种节点类型、JSON 导出/导入 |
 

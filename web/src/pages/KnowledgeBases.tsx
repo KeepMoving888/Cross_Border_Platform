@@ -35,6 +35,8 @@ import {
   List,
   Divider,
   Alert,
+  Upload,
+  Tabs,
 } from 'antd';
 import {
   DatabaseOutlined,
@@ -48,6 +50,10 @@ import {
   LoadingOutlined,
   ThunderboltOutlined,
   CopyOutlined,
+  FilePdfOutlined,
+  FileWordOutlined,
+  FileMarkdownOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import PageContainer from '@/components/PageContainer';
 import {
@@ -55,6 +61,7 @@ import {
   createKnowledgeBase,
   listDocuments,
   uploadDocument,
+  uploadDocumentFile,
   ragSearch,
 } from '@/api/ai';
 import { formatDateTime } from '@/utils/format';
@@ -105,6 +112,8 @@ const KnowledgeBases: React.FC = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [uploadForm] = Form.useForm();
+  const [uploadTab, setUploadTab] = useState<'text' | 'file'>('text');
+  const [fileList, setFileList] = useState<{ file: File } | null>(null);
 
   // 文档列表
   const [docs, setDocs] = useState<KnowledgeDocument[]>([]);
@@ -212,21 +221,38 @@ const KnowledgeBases: React.FC = () => {
   const handleUploadDoc = async () => {
     if (!selectedKb) return;
     try {
-      const values = await uploadForm.validateFields();
-      setUploadSubmitting(true);
-      await uploadDocument(selectedKb.id, {
-        title: values.title,
-        content: values.content,
-        source: values.source,
-      });
-      message.success('文档上传成功,正在后台分块向量化');
-      setUploadModalOpen(false);
-      uploadForm.resetFields();
-      await refreshDocs(selectedKb.id);
-      // 知识库文档计数 +1(本地乐观更新)
-      setSelectedKb({ ...selectedKb, document_count: selectedKb.document_count + 1 });
-    } catch (e) {
-      // 静默
+      if (uploadTab === 'file') {
+        // 文件上传模式
+        if (!fileList?.file) {
+          message.warning('请选择要上传的文件');
+          return;
+        }
+        setUploadSubmitting(true);
+        const title = uploadForm.getFieldValue('title');
+        await uploadDocumentFile(selectedKb.id, fileList.file, title);
+        message.success(`文件 ${fileList.file.name} 解析成功,正在分块向量化`);
+        setUploadModalOpen(false);
+        uploadForm.resetFields();
+        setFileList(null);
+        await refreshDocs(selectedKb.id);
+        setSelectedKb({ ...selectedKb, document_count: selectedKb.document_count + 1 });
+      } else {
+        // 纯文本上传模式
+        const values = await uploadForm.validateFields();
+        setUploadSubmitting(true);
+        await uploadDocument(selectedKb.id, {
+          title: values.title,
+          content: values.content,
+          source: values.source,
+        });
+        message.success('文档上传成功,正在后台分块向量化');
+        setUploadModalOpen(false);
+        uploadForm.resetFields();
+        await refreshDocs(selectedKb.id);
+        setSelectedKb({ ...selectedKb, document_count: selectedKb.document_count + 1 });
+      }
+    } catch (e: any) {
+      message.error(e?.message || '上传失败');
     } finally {
       setUploadSubmitting(false);
     }
@@ -686,45 +712,123 @@ const KnowledgeBases: React.FC = () => {
       <Modal
         title={`上传文档到「${selectedKb?.name || ''}」`}
         open={uploadModalOpen}
-        onCancel={() => setUploadModalOpen(false)}
+        onCancel={() => {
+          setUploadModalOpen(false);
+          setFileList(null);
+          setUploadTab('text');
+        }}
         onOk={handleUploadDoc}
         confirmLoading={uploadSubmitting}
-        okText="上传并分块"
+        okText={uploadTab === 'file' ? '上传文件' : '上传并分块'}
         cancelText="取消"
         destroyOnClose
         width={640}
       >
         <Alert
-          message="上传后系统会自动执行:文本分块(500字符+50重叠) → Embedding 向量化 → 写入 pgvector"
+          message="上传后系统会自动执行:文档解析 → 文本分块(500字符+50重叠) → Embedding 向量化 → 写入 pgvector"
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
         />
-        <Form form={uploadForm} layout="vertical" preserve={false}>
-          <Form.Item
-            name="title"
-            label="文档标题"
-            rules={[{ required: true, message: '请输入文档标题' }]}
-          >
-            <Input placeholder="如:HD-001 负离子吹风机用户手册" maxLength={128} />
-          </Form.Item>
-          <Form.Item name="source" label="来源" tooltip="可选,文件路径或 URL">
-            <Input placeholder="如:docs/manual-hd-001.pdf" maxLength={255} />
-          </Form.Item>
-          <Form.Item
-            name="content"
-            label="文档内容"
-            rules={[{ required: true, message: '请输入文档内容' }]}
-            tooltip="支持多段落(空行分隔),系统会按段落+固定长度自动分块"
-          >
-            <Input.TextArea
-              placeholder="粘贴文档全文。系统会自动分块并向量化入库,处理过程在后台异步执行,可稍后刷新查看状态。"
-              rows={10}
-              showCount
-              maxLength={50000}
-            />
-          </Form.Item>
-        </Form>
+        <Tabs
+          activeKey={uploadTab}
+          onChange={(k) => setUploadTab(k as 'text' | 'file')}
+          items={[
+            {
+              key: 'text',
+              label: (
+                <span>
+                  <FileTextOutlined /> 纯文本
+                </span>
+              ),
+              children: (
+                <Form form={uploadForm} layout="vertical" preserve={false}>
+                  <Form.Item
+                    name="title"
+                    label="文档标题"
+                    rules={[{ required: uploadTab === 'text', message: '请输入文档标题' }]}
+                  >
+                    <Input placeholder="如:HD-001 负离子吹风机用户手册" maxLength={128} />
+                  </Form.Item>
+                  <Form.Item name="source" label="来源" tooltip="可选,文件路径或 URL">
+                    <Input placeholder="如:docs/manual-hd-001.pdf" maxLength={255} />
+                  </Form.Item>
+                  <Form.Item
+                    name="content"
+                    label="文档内容"
+                    rules={[{ required: uploadTab === 'text', message: '请输入文档内容' }]}
+                    tooltip="支持多段落(空行分隔),系统会按段落+固定长度自动分块"
+                  >
+                    <Input.TextArea
+                      placeholder="粘贴文档全文。系统会自动分块并向量化入库,处理过程在后台异步执行,可稍后刷新查看状态。"
+                      rows={8}
+                      showCount
+                      maxLength={50000}
+                    />
+                  </Form.Item>
+                </Form>
+              ),
+            },
+            {
+              key: 'file',
+              label: (
+                <span>
+                  <UploadOutlined /> 文件上传
+                </span>
+              ),
+              children: (
+                <Form form={uploadForm} layout="vertical" preserve={false}>
+                  <Form.Item name="title" label="文档标题(可选)" tooltip="留空则使用文件名">
+                    <Input placeholder="留空则使用文件名" maxLength={128} />
+                  </Form.Item>
+                  <Form.Item label="上传文件" required>
+                    <Upload.Dragger
+                      accept=".txt,.md,.markdown,.pdf,.docx"
+                      maxCount={1}
+                      beforeUpload={(file) => {
+                        setFileList({ file });
+                        return false; // 阻止自动上传,由按钮触发
+                      }}
+                      onRemove={() => {
+                        setFileList(null);
+                      }}
+                      fileList={fileList ? [{ uid: '-1', name: fileList.file.name } as any] : []}
+                    >
+                      <p className="ant-upload-drag-icon">
+                        <InboxOutlined />
+                      </p>
+                      <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+                      <p className="ant-upload-hint">
+                        支持 TXT / Markdown / PDF / Word(.docx),单文件最大 10MB
+                      </p>
+                    </Upload.Dragger>
+                  </Form.Item>
+                  <Alert
+                    message="文件解析说明"
+                    description={
+                      <ul style={{ margin: 0, paddingLeft: 16 }}>
+                        <li>
+                          <FileTextOutlined style={{ color: '#1677ff' }} /> TXT/Markdown:
+                          直接作为文本入库
+                        </li>
+                        <li>
+                          <FileWordOutlined style={{ color: '#1677ab' }} /> Word(.docx):
+                          解析 XML 提取正文
+                        </li>
+                        <li>
+                          <FilePdfOutlined style={{ color: '#ff4d4f' }} /> PDF:
+                          提取文本流(扫描件需 OCR,暂不支持)
+                        </li>
+                      </ul>
+                    }
+                    type="warning"
+                    style={{ marginTop: 8 }}
+                  />
+                </Form>
+              ),
+            },
+          ]}
+        />
       </Modal>
     </PageContainer>
   );

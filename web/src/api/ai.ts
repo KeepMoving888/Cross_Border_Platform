@@ -79,6 +79,35 @@ export async function uploadDocument(
   return post<KnowledgeDocument>(`/ai/knowledge-bases/${knowledgeBaseID}/documents`, payload);
 }
 
+/** 上传文件文档(支持 PDF/Word/Markdown/TXT,multipart/form-data)
+ * 后端解析文件为纯文本,再走分块+向量化入库
+ */
+export async function uploadDocumentFile(
+  knowledgeBaseID: number,
+  file: File,
+  title?: string,
+): Promise<KnowledgeDocument> {
+  const formData = new FormData();
+	formData.append('file', file);
+	if (title) {
+		formData.append('title', title);
+	}
+	// 直接 fetch,client.ts 的 post 不支持 FormData
+	const token = localStorage.getItem('token') || '';
+	const resp = await fetch(`/api/v1/ai/knowledge-bases/${knowledgeBaseID}/documents/upload`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+		body: formData,
+	});
+	const json = await resp.json();
+	if (!resp.ok || json.code !== 0) {
+		throw new Error(json.message || '文件上传失败');
+	}
+	return json.data as KnowledgeDocument;
+}
+
 /** RAG 检索测试:输入 query 返回 top-K 文档分块 */
 export async function ragSearch(payload: {
   query: string;
