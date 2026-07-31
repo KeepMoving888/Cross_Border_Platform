@@ -172,9 +172,20 @@ func main() {
 		}
 		// 微服务模式:AI Service 通过 HTTP 调用 RAG Service(而非进程内调用)
 		// 配置了 RAG_SERVICE_URL 时注入 RemoteRAGClient,实现服务解耦
+		// 容错:RemoteRAGClient 内置熔断器 + 本地 TF-IDF 降级,确保 RAG Service 不可用时工作流仍可执行
 		if role == RoleAI && cfg.Service.RAGServiceURL != "" {
-			aiEngine.SetRAGSearcher(ai.NewRemoteRAGClient(cfg.Service.RAGServiceURL))
-			logger.Get().Infof("ai service: using remote rag client, target=%s", cfg.Service.RAGServiceURL)
+			remoteClient := ai.NewRemoteRAGClient(cfg.Service.RAGServiceURL)
+			// 注入本地 RAGService 作为降级检索器
+			// 传 nil pgDB 强制 TF-IDF 模式,避免 AI Service 与 RAG Service 向量检索能力重叠
+			// 仅当 RAG Service 不可用(熔断/网络故障)时,AI Service 才用 TF-IDF 兜底
+			localRAG := ai.NewRAGService(mysqlDB, nil, cfg.LLM)
+			if rdb := database.GetRedisSafe(); rdb != nil {
+				localRAG.SetRedis(rdb)
+			}
+			remoteClient.SetFallback(localRAG)
+			aiEngine.SetRAGSearcher(remoteClient)
+			logger.Get().Infof("ai service: using remote rag client with TF-IDF fallback, target=%s",
+				cfg.Service.RAGServiceURL)
 		}
 		scheduler := ai.NewScheduler(mysqlDB, aiEngine)
 		go scheduler.Start()
