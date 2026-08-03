@@ -1,0 +1,47 @@
+# CB-Platform RAG Service 多副本水平扩展测试配置
+#
+# 用法:
+#   # 启动多副本(3 个 RAG Service 副本)
+#   docker compose -f docker-compose-microservices.yml \
+#     -f docker-compose-scale-test.yml up -d --scale cb-rag-svc=3
+#
+#   # 运行负载测试
+#   go run ./cmd/loadtest -url http://localhost:8082/api/v1/ai/rag/search \
+#     -concurrency 50 -duration 30s
+#
+#   # 查看各副本日志
+#   docker compose -f docker-compose-microservices.yml logs cb-rag-svc
+#
+# 注意:
+#   - 多副本模式下 cb-rag-svc 不能有固定 container_name(由 compose 自动生成)
+#   - 端口映射使用 8082 映射到随机主机端口,通过 docker compose ps 查看
+#   - Docker Compose 内置 DNS 会将 cb-rag-svc 轮询解析到所有副本
+services:
+  cb-rag-svc:
+    # 移除固定 container_name 以支持 --scale
+    container_name: ""
+    # 端口映射改为范围,允许多副本分配不同端口
+    ports: []
+    # scale 模式下不需要 deploy.resources(由 HPA 接管)
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    # 健康检查保留,用于验证副本就绪状态
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # AI Service 配置 RemoteRAGClient 连接到 cb-rag-svc
+  # Docker Compose DNS 会自动轮询到所有 RAG 副本
+  cb-ai-svc:
+    environment:
+      - RAG_SERVICE_URL=http://cb-rag-svc:8082
