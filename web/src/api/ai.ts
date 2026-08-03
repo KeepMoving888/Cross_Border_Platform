@@ -290,3 +290,69 @@ export async function getRAGTrend(range: MetricsTimeRange): Promise<RAGTrendData
     searchCount: countSeries.map(([, v]) => v),
   };
 }
+
+// ============== 微服务状态监控(Prometheus) ==============
+
+/** 微服务健康状态 */
+export interface MicroserviceStatus {
+  serviceName: string;            // 服务展示名
+  job: string;                    // Prometheus job 标签
+  status: 'up' | 'down';          // 在线状态(up=1/down=0 或查询失败)
+  requestRate: number;           // 请求速率(req/s, 5 分钟平均)
+  errorRate: number;              // 5xx 错误率(req/s, 5 分钟平均)
+  p95Latency: number;             // P95 延迟(秒)
+}
+
+/** 微服务元数据(job → 展示名),顺序即展示顺序 */
+const MICROSERVICES: Array<{ job: string; name: string }> = [
+  { job: 'cb-gateway', name: 'Gateway 网关' },
+  { job: 'cb-ai-service', name: 'AI Service' },
+  { job: 'cb-rag-service', name: 'RAG Service' },
+];
+
+/** 查询 Prometheus 按 job 分组的多值指标(返回 job → value 映射) */
+async function queryPrometheusByJob(query: string): Promise<Record<string, number>> {
+  try {
+    const resp = await fetch(`${PROMETHEUS_URL}?query=${encodeURIComponent(query)}`);
+    const json: PrometheusResponse = await resp.json();
+    if (json.status === 'success') {
+      const map: Record<string, number> = {};
+      for (const r of json.data.result) {
+        const job = r.metric.job || 'unknown';
+        map[job] = parseFloat(r.value[1]) || 0;
+      }
+      return map;
+    }
+  } catch {
+    // Prometheus 不可用时静默
+  }
+  return {};
+}
+
+/**
+ * 获取三个微服务(Gateway/AI Service/RAG Service)的健康状态
+ * 通过 Prometheus 并行查询 up / 请求速率 / 错误率 / P95 延迟
+ * 查询失败时返回各服务 status='down' 的默认结构,保证 UI 始终渲染 3 张卡片
+ */
+export async function getMicroserviceStatus(): Promise<MicroserviceStatus[]> {
+  const jobFilter = 'cb-gateway|cb-ai-service|cb-rag-service';
+  const [upMap, reqRateMap, errRateMap, p95Map] = await Promise.all([
+    queryPrometheusByJob(`up{job=~"${jobFilter}"}`),
+    queryPrometheusByJob(`sum by (job) (rate(http_requests_total{job=~"${jobFilter}"}[5m]))`),
+    queryPrometheusByJob(
+      `sum by (job) (rate(http_requests_total{job=~"${jobFilter}",status=~"5.."}[5m]))`,
+    ),
+    queryPrometheusByJob(
+      `histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~"${jobFilter}"}[5m])))`,
+    ),
+  ]);
+
+  return MICROSERVICES.map(({ job, name }) => ({
+    serviceName: name,
+    job,
+    status: upMap[job] === 1 ? 'up' : 'down',
+    requestRate: reqRateMap[job] || 0,
+    errorRate: errRateMap[job] || 0,
+    p95Latency: p95Map[job] || 0,
+  }));
+}

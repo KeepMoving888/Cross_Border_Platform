@@ -1,0 +1,100 @@
+# CB-Platform 微服务验证版 - 复用现有基础设施
+# 用途:验证微服务架构(APP_ROLE 角色裁剪 + Gateway 反向代理)而不启动独立基础设施
+# 前提:单体版 docker-compose.yml 已启动(mysql/redis/postgres 在 deployments_cb-net 网络中)
+# 启动:docker compose -p cbmicro -f docker-compose-microservices-verify.yml up -d
+# 停止:docker compose -p cbmicro -f docker-compose-microservices-verify.yml down
+
+networks:
+  cb-net:
+    external: true
+    name: deployments_cb-net
+
+services:
+  # ============== API Gateway(业务 CRUD + 转发) ==============
+  cb-gateway-ms:
+    image: deployments-cb-platform:latest
+    container_name: cb-gateway-ms
+    restart: unless-stopped
+    ports:
+      - "8089:8080"
+    environment:
+      - APP_ENV=production
+      - APP_ROLE=gateway
+      - APP_PORT=8080
+      - MYSQL_HOST=cb-platform-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=cb-platform-redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=cb_platform_jwt_secret_change_in_production
+      - JWT_EXPIRE_HOURS=24
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      # 转发目标(微服务模式核心配置)
+      - AI_SERVICE_URL=http://cb-ai-svc-ms:8081
+      - RAG_SERVICE_URL=http://cb-rag-svc-ms:8082
+    networks:
+      - cb-net
+
+  # ============== AI Service(工作流 + LLM) ==============
+  cb-ai-svc-ms:
+    image: deployments-cb-platform:latest
+    container_name: cb-ai-svc-ms
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - APP_ENV=production
+      - APP_ROLE=ai
+      - APP_PORT=8081
+      - MYSQL_HOST=cb-platform-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=cb-platform-redis
+      - REDIS_PORT=6379
+      - PG_HOST=cb-platform-postgres
+      - PG_PORT=5432
+      - PG_USER=cb
+      - PG_PASSWORD=cb_pass_2026
+      - PG_DB=cb_vector
+      - PG_SSLMODE=disable
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      # RAG Service 地址(熔断器 + TF-IDF 降级)
+      - RAG_SERVICE_URL=http://cb-rag-svc-ms:8082
+    networks:
+      - cb-net
+
+  # ============== RAG Service(向量检索 + 文档入库) ==============
+  cb-rag-svc-ms:
+    image: deployments-cb-platform:latest
+    container_name: cb-rag-svc-ms
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - APP_ENV=production
+      - APP_ROLE=rag
+      - APP_PORT=8082
+      - MYSQL_HOST=cb-platform-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cb
+      - MYSQL_PASSWORD=cb_pass_2026
+      - MYSQL_DB=cb_platform
+      - REDIS_HOST=cb-platform-redis
+      - REDIS_PORT=6379
+      - PG_HOST=cb-platform-postgres
+      - PG_PORT=5432
+      - PG_USER=cb
+      - PG_PASSWORD=cb_pass_2026
+      - PG_DB=cb_vector
+      - PG_SSLMODE=disable
+      - LOG_LEVEL=info
+      - LOG_DIR=logs
+      - VECTOR_STORE_TYPE=pgvector
+    networks:
+      - cb-net

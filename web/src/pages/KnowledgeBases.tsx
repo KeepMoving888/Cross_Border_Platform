@@ -66,8 +66,9 @@ import {
   ragSearch,
   getRAGMetrics,
   getRAGTrend,
+  getMicroserviceStatus,
 } from '@/api/ai';
-import type { RAGMetrics, RAGTrendData, MetricsTimeRange } from '@/api/ai';
+import type { RAGMetrics, RAGTrendData, MetricsTimeRange, MicroserviceStatus } from '@/api/ai';
 import { formatDateTime } from '@/utils/format';
 import type { KnowledgeBase, KnowledgeDocument, RAGDocument } from '@/types/api';
 import ReactECharts from 'echarts-for-react';
@@ -132,7 +133,7 @@ const KnowledgeBases: React.FC = () => {
   const [searchResults, setSearchResults] = useState<RAGDocument[]>([]);
 
   // 当前激活 Tab
-  const [activeTab, setActiveTab] = useState<'documents' | 'search' | 'monitor'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'search' | 'monitor' | 'microservices'>('documents');
 
   // RAG 监控指标
   const [ragMetrics, setRagMetrics] = useState<RAGMetrics | null>(null);
@@ -142,6 +143,11 @@ const KnowledgeBases: React.FC = () => {
   const [trendData, setTrendData] = useState<RAGTrendData | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
   const [timeRange, setTimeRange] = useState<MetricsTimeRange>('1h');
+
+  // 微服务状态(Gateway / AI Service / RAG Service)
+  const [microserviceStatuses, setMicroserviceStatuses] = useState<MicroserviceStatus[] | null>(null);
+  const [microserviceLoading, setMicroserviceLoading] = useState(false);
+  const microserviceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ============== 数据加载 ==============
 
@@ -336,6 +342,38 @@ const KnowledgeBases: React.FC = () => {
       refreshTrend();
     }
   }, [activeTab, refreshMetrics, refreshTrend]);
+
+  // ============== 微服务状态监控 ==============
+
+  // 拉取微服务状态(Prometheus 不可用时返回 3 张 status=down 卡片)
+  const refreshMicroserviceStatus = useCallback(async () => {
+    setMicroserviceLoading(true);
+    try {
+      const list = await getMicroserviceStatus();
+      setMicroserviceStatuses(list);
+    } catch {
+      // Prometheus 不可用时静默
+    } finally {
+      setMicroserviceLoading(false);
+    }
+  }, []);
+
+  // 切换到微服务状态 Tab 时立即加载 + 每 30s 自动刷新,离开时清理定时器
+  useEffect(() => {
+    if (microserviceTimerRef.current) {
+      clearInterval(microserviceTimerRef.current);
+      microserviceTimerRef.current = null;
+    }
+    if (activeTab !== 'microservices') return;
+    refreshMicroserviceStatus();
+    microserviceTimerRef.current = setInterval(refreshMicroserviceStatus, 30000);
+    return () => {
+      if (microserviceTimerRef.current) {
+        clearInterval(microserviceTimerRef.current);
+        microserviceTimerRef.current = null;
+      }
+    };
+  }, [activeTab, refreshMicroserviceStatus]);
 
   // ============== 渲染辅助 ==============
 
@@ -545,10 +583,11 @@ const KnowledgeBases: React.FC = () => {
                 { key: 'documents', tab: '文档管理' },
                 { key: 'search', tab: '检索测试' },
                 { key: 'monitor', tab: 'RAG 监控' },
+                { key: 'microservices', tab: '微服务状态' },
               ]}
               tabProps={{ size: 'middle' }}
               activeTabKey={activeTab}
-              onTabChange={(k) => setActiveTab(k as 'documents' | 'search' | 'monitor')}
+              onTabChange={(k) => setActiveTab(k as 'documents' | 'search' | 'monitor' | 'microservices')}
             >
               {/* 知识库元信息 */}
               <Descriptions size="small" column={3} style={{ marginBottom: 16 }}>
@@ -945,6 +984,87 @@ const KnowledgeBases: React.FC = () => {
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description="暂无监控数据,请确保 Prometheus 已启动并采集到 RAG 指标"
+                      style={{ padding: '40px 0' }}
+                    />
+                  )}
+                </Spin>
+              )}
+
+              {activeTab === 'microservices' && (
+                <Spin spinning={microserviceLoading}>
+                  <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Alert
+                      message="微服务状态监控"
+                      description="实时展示 Gateway / AI Service / RAG Service 三个微服务的健康状态,数据每 30 秒自动刷新。状态标红请检查对应服务日志。"
+                      type="info"
+                      showIcon
+                      style={{ flex: 1, marginRight: 16 }}
+                    />
+                    <Button icon={<ReloadOutlined />} onClick={refreshMicroserviceStatus}>
+                      刷新
+                    </Button>
+                  </div>
+
+                  {microserviceStatuses ? (
+                    <Row gutter={16}>
+                      {microserviceStatuses.map((svc) => (
+                        <Col xs={24} md={8} key={svc.job}>
+                          <Card
+                            size="small"
+                            title={
+                              <Space>
+                                <span>{svc.serviceName}</span>
+                                <Tag color={svc.status === 'up' ? 'success' : 'error'} style={{ margin: 0 }}>
+                                  {svc.status === 'up' ? '在线' : '离线'}
+                                </Tag>
+                              </Space>
+                            }
+                            headStyle={{
+                              borderLeft: `4px solid ${svc.status === 'up' ? '#52c41a' : '#ff4d4f'}`,
+                            }}
+                          >
+                            <Row gutter={[8, 8]}>
+                              <Col span={12}>
+                                <Statistic
+                                  title="请求速率"
+                                  value={svc.requestRate.toFixed(2)}
+                                  suffix="req/s"
+                                  valueStyle={{ color: '#1677ff', fontSize: 18 }}
+                                />
+                              </Col>
+                              <Col span={12}>
+                                <Statistic
+                                  title="错误率"
+                                  value={svc.errorRate.toFixed(2)}
+                                  suffix="req/s"
+                                  valueStyle={{
+                                    color: svc.errorRate > 0 ? '#ff4d4f' : '#52c41a',
+                                    fontSize: 18,
+                                  }}
+                                />
+                              </Col>
+                              <Col span={24}>
+                                <Statistic
+                                  title="P95 延迟"
+                                  value={svc.p95Latency.toFixed(3)}
+                                  suffix="s"
+                                  valueStyle={{
+                                    color:
+                                      svc.p95Latency < 0.5 ? '#52c41a' :
+                                      svc.p95Latency < 2 ? '#faad14' : '#ff4d4f',
+                                    fontSize: 18,
+                                  }}
+                                />
+                              </Col>
+                            </Row>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="暂无微服务数据,请确保 Prometheus 已启动并采集到服务指标"
                       style={{ padding: '40px 0' }}
                     />
                   )}

@@ -47,6 +47,9 @@ services:
       # 转发目标(AI/RAG 服务地址)
       - AI_SERVICE_URL=http://cb-ai-svc:8081
       - RAG_SERVICE_URL=http://cb-rag-svc:8082
+      # OpenTelemetry 链路追踪(上报到 Jaeger)
+      - OTEL_ENDPOINT=jaeger:4318
+      - OTEL_SAMPLING_RATIO=1.0
     depends_on:
       mysql:
         condition: service_healthy
@@ -104,6 +107,9 @@ services:
       - LLM_MODEL=glm-4-plus
       # RAG Service 地址(工作流 RAG 节点调用)
       - RAG_SERVICE_URL=http://cb-rag-svc:8082
+      # OpenTelemetry 链路追踪(上报到 Jaeger)
+      - OTEL_ENDPOINT=jaeger:4318
+      - OTEL_SAMPLING_RATIO=1.0
     depends_on:
       mysql:
         condition: service_healthy
@@ -162,7 +168,11 @@ services:
       # 向量存储类型:pgvector(默认) / milvus(大规模)
       - VECTOR_STORE_TYPE=pgvector
       # Milvus 配置(VECTOR_STORE_TYPE=milvus 时启用)
-      - MILVUS_ADDRESS=http://milvus:19530
+      # 注意: Milvus REST API 在 9091 端口,19530 是 gRPC 端口
+      - MILVUS_ADDRESS=http://milvus:9091
+      # OpenTelemetry 链路追踪(上报到 Jaeger)
+      - OTEL_ENDPOINT=jaeger:4318
+      - OTEL_SAMPLING_RATIO=1.0
     depends_on:
       mysql:
         condition: service_healthy
@@ -313,6 +323,23 @@ services:
     command: minio server /minio_data
     volumes:
       - minio-data:/minio_data
+    networks:
+      - cb-net
+
+  # ============== Jaeger(分布式链路追踪 UI) ==============
+  # 接收 OTLP 协议(端口 4317 gRPC / 4318 HTTP),提供 Web UI(端口 16686)
+  # 应用通过 OTEL_ENDPOINT=jaeger:4318 配置上报地址
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: cb-platform-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger Web UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - TZ=Asia/Shanghai
     networks:
       - cb-net
 

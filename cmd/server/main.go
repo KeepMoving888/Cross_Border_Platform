@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/cb-platform/internal/pkg/config"
 	"github.com/cb-platform/internal/pkg/database"
 	"github.com/cb-platform/internal/pkg/logger"
+	"github.com/cb-platform/internal/pkg/tracing"
 )
 
 // 服务角色常量(APP_ROLE 环境变量控制)
@@ -89,6 +91,25 @@ func main() {
 		role = RoleGateway
 	}
 	logger.Get().Infof("service role: %s (microservices mode=%v)", role, role != RoleGateway)
+
+	// ============== OpenTelemetry 链路追踪初始化 ==============
+	// OTEL_ENDPOINT 为空时不初始化 OTel,回退到 X-Trace-Id 机制
+	// 微服务模式下通过 Jaeger 可视化 Gateway → AI → RAG 全链路
+	otelEndpoint := os.Getenv("OTEL_ENDPOINT")
+	otelServiceName := "cb-" + role // cb-gateway / cb-ai / cb-rag
+	otelSampling := 1.0             // 开发环境全采样,生产环境建议 0.1
+	if os.Getenv("OTEL_SAMPLING_RATIO") != "" {
+		if r, err := strconv.ParseFloat(os.Getenv("OTEL_SAMPLING_RATIO"), 64); err == nil {
+			otelSampling = r
+		}
+	}
+	otelShutdown, err := tracing.Init(otelEndpoint, otelServiceName, otelSampling)
+	if err != nil {
+		logger.Get().Warnf("init otel failed (tracing disabled, using X-Trace-Id fallback): %v", err)
+	}
+	if otelShutdown != nil {
+		defer tracing.Shutdown(context.Background())
+	}
 
 	// ============== 数据库初始化(所有角色共享) ==============
 	// MySQL: 业务数据 + AI 工作流元数据 + RAG 文档元数据(所有角色都需要)

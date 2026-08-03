@@ -118,6 +118,7 @@ func (pm *ProxyMiddleware) registerProxyRoute(r *gin.Engine, route proxyRoute) {
 			req.URL.Host = target.Host
 			// 保留原始路径和 query,下游服务按原路径处理
 			// X-Forwarded-For 由 Go 标准库自动追加
+			// OTel traceparent header 由 TraceID 中间件注入,ReverseProxy 原样透传
 			req.Host = target.Host
 		},
 		Transport: &http.Transport{

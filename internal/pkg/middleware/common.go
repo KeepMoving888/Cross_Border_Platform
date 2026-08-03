@@ -8,11 +8,22 @@ import (
 	"github.com/cb-platform/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // TraceID 链路追踪中间件,为每个请求生成唯一 trace_id
+// 同时集成 OpenTelemetry W3C Trace Context 传播:
+//   - 入站: 从 traceparent header 提取父 span 上下文
+//   - 出站: 通过 c.Request.Context() 传递 span 上下文,供下游 HTTP 调用使用
+//   - 兼容: 保留 X-Trace-Id 作为简化追踪 ID(用于日志和响应)
 func TraceID() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// OTel: 从入站 header 提取 span 上下文(W3C traceparent)
+		ctx := otel.GetTextMapPropagator().Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
+		c.Request = c.Request.WithContext(ctx)
+
+		// 兼容: 保留 X-Trace-Id 用于日志关联
 		traceID := c.GetHeader("X-Trace-Id")
 		if traceID == "" {
 			traceID = uuid.New().String()

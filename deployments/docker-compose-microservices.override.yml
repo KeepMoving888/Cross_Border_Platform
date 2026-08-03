@@ -1,0 +1,47 @@
+# CB-Platform 微服务部署版 - 本地验证 Override
+# 解决与现有运行容器(b2b_backend/rag_*/cb-platform-*)的端口冲突
+# 启动:docker compose -f docker-compose-microservices.yml -f docker-compose-microservices.override.yml up -d
+#
+# 说明:
+#   - 因 Docker Hub 网络问题无法拉取 golang:1.22-alpine,改用本地已构建镜像 deployments-cb-platform:latest
+#   - 该镜像已包含编译好的二进制,通过 APP_ROLE 环境变量控制服务角色
+#   - 端口映射调整避免与现有容器冲突
+
+services:
+  cb-gateway:
+    image: deployments-cb-platform:latest
+    build: !reset null
+    ports:
+      - "8088:8080"
+
+  cb-ai-svc:
+    image: deployments-cb-platform:latest
+    build: !reset null
+    ports:
+      - "8081:8081"
+
+  cb-rag-svc:
+    image: deployments-cb-platform:latest
+    build: !reset null
+    ports:
+      - "8082:8082"
+
+  mysql:
+    ports:
+      - "13306:3306"
+
+  redis:
+    ports:
+      - "16380:6379"
+
+  postgres:
+    ports:
+      - "15433:5432"
+
+  prometheus:
+    ports:
+      - "9094:9090"
+
+  grafana:
+    ports:
+      - "3002:3000"

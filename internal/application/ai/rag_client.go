@@ -12,6 +12,8 @@ import (
 
 	"github.com/cb-platform/internal/pkg/logger"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // ============== 熔断器(轻量级实现,避免引入外部依赖) ==============
@@ -188,7 +190,12 @@ func (c *RemoteRAGClient) Search(query string, knowledgeBaseID uint, topK int) (
 		return c.fallbackSearch(query, knowledgeBaseID, topK)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Trace-Id", traceID) // 链路追踪:透传 traceID 到 RAG Service
+	req.Header.Set("X-Trace-Id", traceID) // 兼容:简化 traceID 用于日志关联
+
+	// OTel: 注入 W3C traceparent header,实现跨服务 span 上下文传播
+	// Gateway → AI Service → RAG Service 全链路在 Jaeger 中可视化为一个 trace
+	otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
+
 	if c.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
