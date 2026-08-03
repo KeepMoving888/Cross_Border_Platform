@@ -1,0 +1,15 @@
+apiVersion: v2
+name: cb-platform
+description: 跨境电商智能运营中台 - 微服务版 Helm Chart (API Gateway + AI Service + RAG Service)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - cross-border
+  - ai
+  - rag
+  - microservices
+home: https://github.com/KeepMoving888/Cross_Border_Platform
+maintainers:
+  - name: cb-platform-team
+icon: https://raw.githubusercontent.com/cb-platform/assets/main/logo.png

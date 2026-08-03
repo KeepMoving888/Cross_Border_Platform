@@ -1,0 +1,21 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cb-platform.fullname" . }}-gateway-config
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "gateway") | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.gateway.config.appEnv | quote }}
+  LOG_LEVEL: {{ .Values.gateway.config.logLevel | quote }}
+  LOG_DIR: "logs"
+  MYSQL_HOST: {{ .Values.gateway.config.mysqlHost | quote }}
+  MYSQL_PORT: {{ .Values.gateway.config.mysqlPort | quote }}
+  MYSQL_USER: {{ .Values.gateway.config.mysqlUser | quote }}
+  MYSQL_DB: {{ .Values.gateway.config.mysqlDb | quote }}
+  REDIS_HOST: {{ .Values.gateway.config.redisHost | quote }}
+  REDIS_PORT: {{ .Values.gateway.config.redisPort | quote }}
+  JWT_EXPIRE_HOURS: {{ .Values.gateway.config.jwtExpireHours | quote }}
+  AI_SERVICE_URL: {{ .Values.gateway.config.aiServiceUrl | quote }}
+  RAG_SERVICE_URL: {{ .Values.gateway.config.ragServiceUrl | quote }}
+{{- end }}

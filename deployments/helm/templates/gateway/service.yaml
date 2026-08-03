@@ -1,0 +1,17 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cb-platform.serviceName" (dict "ctx" . "component" "gateway") }}
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "gateway") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.gateway.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "cb-platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 4 }}
+{{- end }}

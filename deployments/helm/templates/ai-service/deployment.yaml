@@ -1,0 +1,83 @@
+{{- if .Values.aiService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cb-platform.fullname" . }}-ai
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "ai") | nindent 4 }}
+spec:
+  {{- if not .Values.aiService.hpa.enabled }}
+  replicas: {{ .Values.aiService.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cb-platform.selectorLabels" (dict "ctx" . "component" "ai") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cb-platform.selectorLabels" (dict "ctx" . "component" "ai") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/ai-service/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cb-ai
+          image: {{ include "cb-platform.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.aiService.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "cb-platform.fullname" . }}-ai-config
+          env:
+            - name: APP_ROLE
+              value: {{ .Values.aiService.role | quote }}
+            - name: APP_PORT
+              value: {{ .Values.aiService.port | quote }}
+            {{- if .Values.otel.enabled }}
+            - name: OTEL_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_SAMPLING_RATIO
+              value: {{ .Values.otel.samplingRatio | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.aiService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+      terminationGracePeriodSeconds: 90
+      {{- with .Values.aiService.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aiService.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aiService.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

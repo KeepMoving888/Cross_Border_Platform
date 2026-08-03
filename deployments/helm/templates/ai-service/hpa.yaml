@@ -1,0 +1,35 @@
+{{- if and .Values.aiService.enabled .Values.aiService.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "cb-platform.fullname" . }}-ai
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "ai") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "cb-platform.fullname" . }}-ai
+  minReplicas: {{ .Values.aiService.hpa.minReplicas }}
+  maxReplicas: {{ .Values.aiService.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.aiService.hpa.targetCPUUtilization }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+{{- end }}

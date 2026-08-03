@@ -1,7 +1,16 @@
 # CB-Platform Kubernetes 部署方案(生产环境备用)
 
-> **状态**:Phase 3 规划(备用方案,当前阶段使用 Docker Compose 微服务版)
+> **状态**:Phase 3 已实现 Helm Chart(`deployments/helm/`),通过 `helm lint` 和 `helm template` 验证
 > **适用条件**:团队 > 10 人 / 服务副本数 > 3 / 多环境隔离需求 / 金丝雀发布
+> **验证命令**:
+> ```bash
+> # 语法检查
+> helm lint deployments/helm
+> # 模板渲染验证(默认配置)
+> helm template cb-platform deployments/helm
+> # 生产环境配置渲染
+> helm template cb-platform deployments/helm -f deployments/helm/values-prod.yaml
+> ```
 
 ## 一、为何当前不引入 K8s
 
@@ -77,7 +86,7 @@
 | Redis | 500m | 1000m | 256Mi | 512Mi | 1(Sentinel) |
 | Milvus | 2000m | 4000m | 4Gi | 8Gi | 1(集群) |
 
-## 四、Helm Chart 结构(规划)
+## 四、Helm Chart 结构(已实现)
 
 ```
 deployments/helm/

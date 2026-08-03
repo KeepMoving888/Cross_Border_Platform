@@ -1,0 +1,85 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cb-platform.fullname" . }}-gateway
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "gateway") | nindent 4 }}
+spec:
+  {{- if not .Values.gateway.hpa.enabled }}
+  replicas: {{ .Values.gateway.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cb-platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cb-platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 8 }}
+      annotations:
+        # 配置变更时自动滚动更新
+        checksum/config: {{ include (print $.Template.BasePath "/gateway/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cb-gateway
+          image: {{ include "cb-platform.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "cb-platform.fullname" . }}-gateway-config
+          env:
+            - name: APP_ROLE
+              value: {{ .Values.gateway.role | quote }}
+            - name: APP_PORT
+              value: {{ .Values.gateway.port | quote }}
+            {{- if .Values.otel.enabled }}
+            - name: OTEL_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_SAMPLING_RATIO
+              value: {{ .Values.otel.samplingRatio | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # 优雅停止:等待处理中的请求完成
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+      terminationGracePeriodSeconds: 60
+      {{- with .Values.gateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

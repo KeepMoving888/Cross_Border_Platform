@@ -1,0 +1,200 @@
+# ====================================================================
+# CB-Platform Helm Chart 默认配置
+# 微服务架构: API Gateway + AI Service + RAG Service
+# 用法: helm install cb-platform ./deployments/helm -f values-prod.yaml
+# ====================================================================
+
+# ---- 全局镜像配置 ----
+image:
+  repository: ghcr.io/keepmoving888/cross_border_platform
+  tag: ""             # 留空则使用 Chart.yaml 的 appVersion
+  pullPolicy: IfNotPresent
+  pullSecrets: []     # 私有仓库凭证名称,如 [ghcr-credentials]
+
+# ---- 命名覆盖 ----
+nameOverride: ""
+fullnameOverride: ""
+
+# ---- 服务网格/追踪 ----
+otel:
+  enabled: true
+  endpoint: "jaeger-collector:4318"   # OTLP HTTP endpoint
+  samplingRatio: 0.1                  # 生产采样率 10%,开发环境设 1.0
+
+# ====================================================================
+# API Gateway (业务 CRUD + 认证 + 请求转发)
+# IO 密集型,低 CPU
+# ====================================================================
+gateway:
+  enabled: true
+  replicas: 2
+  role: gateway
+  port: 8080
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # HPA 自动扩缩容(基于 QPS)
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilization: 70
+
+  # 环境/外部依赖
+  config:
+    appEnv: production
+    logLevel: info
+    mysqlHost: cb-mysql
+    mysqlPort: 3306
+    mysqlUser: cb
+    mysqlPassword: cb_pass_2026       # 生产环境应使用 Secret 引用
+    mysqlDb: cb_platform
+    redisHost: cb-redis
+    redisPort: 6379
+    jwtSecret: cb_platform_jwt_secret_change_in_production
+    jwtExpireHours: 24
+    aiServiceUrl: http://cb-ai-svc:8081
+    ragServiceUrl: http://cb-rag-svc:8082
+
+  # Pod 亲和性 - 调度到 gateway 节点池
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ====================================================================
+# AI Service (AI 工作流 + LLM + 调度器)
+# CPU 密集型,需要独立水平扩展
+# ====================================================================
+aiService:
+  enabled: true
+  replicas: 2
+  role: ai
+  port: 8081
+
+  resources:
+    requests:
+      cpu: 2000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+
+  # HPA 自动扩缩容(基于 CPU)
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilization: 70
+
+  config:
+    appEnv: production
+    logLevel: info
+    mysqlHost: cb-mysql
+    mysqlPort: 3306
+    mysqlUser: cb
+    mysqlPassword: cb_pass_2026
+    mysqlDb: cb_platform
+    redisHost: cb-redis
+    redisPort: 6379
+    pgHost: cb-postgres
+    pgPort: 5432
+    pgUser: cb
+    pgPassword: cb_pass_2026
+    pgDb: cb_vector
+    pgSslmode: disable
+    llmProvider: glm
+    llmApiKey: ""                     # 通过 --set 或 Secret 注入
+    llmBaseUrl: https://open.bigmodel.cn/api/paas/v4
+    llmModel: glm-4-plus
+    ragServiceUrl: http://cb-rag-svc:8082
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ====================================================================
+# RAG Service (向量检索 + 文档入库 + Reranker)
+# 内存密集型,处理 Embedding 和向量检索
+# ====================================================================
+ragService:
+  enabled: true
+  replicas: 2
+  role: rag
+  port: 8082
+
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  # HPA 自动扩缩容(基于 QPS)
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 3
+    targetCPUUtilization: 75
+
+  config:
+    appEnv: production
+    logLevel: info
+    mysqlHost: cb-mysql
+    mysqlPort: 3306
+    mysqlUser: cb
+    mysqlPassword: cb_pass_2026
+    mysqlDb: cb_platform
+    redisHost: cb-redis
+    redisPort: 6379
+    pgHost: cb-postgres
+    pgPort: 5432
+    pgUser: cb
+    pgPassword: cb_pass_2026
+    pgDb: cb_vector
+    pgSslmode: disable
+    llmProvider: glm
+    llmApiKey: ""
+    llmBaseUrl: https://open.bigmodel.cn/api/paas/v4
+    llmModel: glm-4-plus
+    vectorStoreType: pgvector         # pgvector | milvus
+    milvusAddress: http://cb-milvus:9091
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ====================================================================
+# Ingress (TLS 终止 + 路由)
+# ====================================================================
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  host: cb-platform.example.com
+  tls:
+    enabled: true
+    secretName: cb-platform-tls
+
+# ====================================================================
+# PodDisruptionBudget (滚动更新保障)
+# ====================================================================
+pdb:
+  enabled: true
+  minAvailable: 1                    # 每个组件至少保留 1 个可用 Pod
+
+# ====================================================================
+# NetworkPolicy (服务间网络隔离,生产环境建议启用)
+# ====================================================================
+networkPolicy:
+  enabled: false                     # 默认关闭,生产环境启用

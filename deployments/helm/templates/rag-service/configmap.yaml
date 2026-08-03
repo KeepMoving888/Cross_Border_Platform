@@ -1,0 +1,28 @@
+{{- if .Values.ragService.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cb-platform.fullname" . }}-rag-config
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "rag") | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.ragService.config.appEnv | quote }}
+  LOG_LEVEL: {{ .Values.ragService.config.logLevel | quote }}
+  LOG_DIR: "logs"
+  MYSQL_HOST: {{ .Values.ragService.config.mysqlHost | quote }}
+  MYSQL_PORT: {{ .Values.ragService.config.mysqlPort | quote }}
+  MYSQL_USER: {{ .Values.ragService.config.mysqlUser | quote }}
+  MYSQL_DB: {{ .Values.ragService.config.mysqlDb | quote }}
+  REDIS_HOST: {{ .Values.ragService.config.redisHost | quote }}
+  REDIS_PORT: {{ .Values.ragService.config.redisPort | quote }}
+  PG_HOST: {{ .Values.ragService.config.pgHost | quote }}
+  PG_PORT: {{ .Values.ragService.config.pgPort | quote }}
+  PG_USER: {{ .Values.ragService.config.pgUser | quote }}
+  PG_DB: {{ .Values.ragService.config.pgDb | quote }}
+  PG_SSLMODE: {{ .Values.ragService.config.pgSslmode | quote }}
+  LLM_PROVIDER: {{ .Values.ragService.config.llmProvider | quote }}
+  LLM_BASE_URL: {{ .Values.ragService.config.llmBaseUrl | quote }}
+  LLM_MODEL: {{ .Values.ragService.config.llmModel | quote }}
+  VECTOR_STORE_TYPE: {{ .Values.ragService.config.vectorStoreType | quote }}
+  MILVUS_ADDRESS: {{ .Values.ragService.config.milvusAddress | quote }}
+{{- end }}

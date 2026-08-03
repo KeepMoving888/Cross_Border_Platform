@@ -1,0 +1,17 @@
+{{- if .Values.aiService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cb-platform.serviceName" (dict "ctx" . "component" "ai") }}
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "ai") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.aiService.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "cb-platform.selectorLabels" (dict "ctx" . "component" "ai") | nindent 4 }}
+{{- end }}

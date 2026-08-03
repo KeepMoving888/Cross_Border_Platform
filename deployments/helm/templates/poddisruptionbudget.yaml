@@ -1,0 +1,18 @@
+{{- if .Values.pdb.enabled }}
+{{- range $component, $cfg := dict "gateway" .Values.gateway "ai" .Values.aiService "rag" .Values.ragService }}
+{{- if $cfg.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cb-platform.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+spec:
+  minAvailable: {{ $.Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "cb-platform.selectorLabels" (dict "ctx" $ "component" $component) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

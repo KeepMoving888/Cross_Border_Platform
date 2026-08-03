@@ -1,0 +1,113 @@
+# ====================================================================
+# CB-Platform 生产环境覆盖配置
+# 用法: helm install cb-platform ./deployments/helm -f values.yaml -f values-prod.yaml
+# ====================================================================
+
+# 生产环境镜像策略: 总是拉取最新版本
+image:
+  pullPolicy: IfNotPresent
+  # 生产环境指定固定 tag,避免使用 latest
+  tag: "v1.0.0"
+
+# 生产环境 OTel 采样率降低(降低追踪开销)
+otel:
+  enabled: true
+  endpoint: "jaeger-collector.observability:4318"
+  samplingRatio: 0.1                 # 生产环境 10% 采样
+
+# ====================================================================
+# API Gateway 生产配置
+# ====================================================================
+gateway:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6                   # 生产环境提高上限应对峰值
+    targetCPUUtilization: 65
+  # 调度到 gateway 节点池
+  nodeSelector:
+    node-pool: gateway
+  tolerations:
+    - key: "gateway"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# ====================================================================
+# AI Service 生产配置(CPU 密集型,资源上限更高)
+# ====================================================================
+aiService:
+  replicas: 3                        # 生产环境起步 3 副本
+  resources:
+    requests:
+      cpu: 2000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8                   # 生产环境支持更大扩展
+    targetCPUUtilization: 65
+  nodeSelector:
+    node-pool: ai
+  tolerations:
+    - key: "ai"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# ====================================================================
+# RAG Service 生产配置
+# ====================================================================
+ragService:
+  replicas: 3
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 6
+    targetCPUUtilization: 70
+  nodeSelector:
+    node-pool: rag
+  tolerations:
+    - key: "rag"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# ====================================================================
+# Ingress 生产配置
+# ====================================================================
+ingress:
+  enabled: true
+  className: nginx
+  host: cb-platform.example.com      # 替换为实际域名
+  tls:
+    enabled: true
+    secretName: cb-platform-tls
+
+# ====================================================================
+# PDB 生产配置
+# ====================================================================
+pdb:
+  enabled: true
+  minAvailable: 2                    # 生产环境至少保留 2 个副本
+
+# ====================================================================
+# NetworkPolicy 生产环境启用
+# ====================================================================
+networkPolicy:
+  enabled: true

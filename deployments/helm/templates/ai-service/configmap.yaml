@@ -1,0 +1,27 @@
+{{- if .Values.aiService.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cb-platform.fullname" . }}-ai-config
+  labels:
+    {{- include "cb-platform.componentLabels" (dict "ctx" . "component" "ai") | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.aiService.config.appEnv | quote }}
+  LOG_LEVEL: {{ .Values.aiService.config.logLevel | quote }}
+  LOG_DIR: "logs"
+  MYSQL_HOST: {{ .Values.aiService.config.mysqlHost | quote }}
+  MYSQL_PORT: {{ .Values.aiService.config.mysqlPort | quote }}
+  MYSQL_USER: {{ .Values.aiService.config.mysqlUser | quote }}
+  MYSQL_DB: {{ .Values.aiService.config.mysqlDb | quote }}
+  REDIS_HOST: {{ .Values.aiService.config.redisHost | quote }}
+  REDIS_PORT: {{ .Values.aiService.config.redisPort | quote }}
+  PG_HOST: {{ .Values.aiService.config.pgHost | quote }}
+  PG_PORT: {{ .Values.aiService.config.pgPort | quote }}
+  PG_USER: {{ .Values.aiService.config.pgUser | quote }}
+  PG_DB: {{ .Values.aiService.config.pgDb | quote }}
+  PG_SSLMODE: {{ .Values.aiService.config.pgSslmode | quote }}
+  LLM_PROVIDER: {{ .Values.aiService.config.llmProvider | quote }}
+  LLM_BASE_URL: {{ .Values.aiService.config.llmBaseUrl | quote }}
+  LLM_MODEL: {{ .Values.aiService.config.llmModel | quote }}
+  RAG_SERVICE_URL: {{ .Values.aiService.config.ragServiceUrl | quote }}
+{{- end }}
